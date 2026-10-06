@@ -66,7 +66,7 @@ func LoadState(dir string) (*State, error) {
 	for _, j := range s.Jobs {
 		if j.Stage == "running" || j.Stage == "publishing" {
 			j.Stage = "waiting"
-			j.Question = "Контроллер перезапустился во время работы. Контейнер остановлен. Ответьте «повторить», чтобы продолжить."
+			j.Question = "The controller restarted during processing. The interrupted task is paused. Reply to retry and continue."
 			j.QuestionMessage = 0
 		}
 	}

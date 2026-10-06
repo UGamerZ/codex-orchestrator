@@ -1,135 +1,163 @@
 # Codex Orchestrator
 
-Универсальная изолированная среда для выполнения задач из Trello через Codex CLI.
-Поддерживает локальные проекты с локальным ревью и GitHub-репозитории с PR.
-Проект, базовая ветка и аккаунт выбираются при настройке; владелец оркестратора не определяет рабочий аккаунт.
+**English (default)** | [Русский](docs/ru/README.md)
 
-Начните с `scripts/Configure-Project.ps1`. Пошаговая инструкция: [PROJECT-SETUP.md](PROJECT-SETUP.md).
+A general-purpose, isolated environment for handling Trello tasks with Codex CLI.
+Use local projects with local branches and reviews, or GitHub repositories with pull
+requests. Choose the project, base branch, account, models, and integrations during
+setup. The account that owns this orchestrator does not determine the project account.
 
-Доступны Docker и ограниченный Windows sandbox. До запуска необходимы настройка интеграций и проверка изоляции.
+Start with `scripts/Configure-Project.ps1` and the [project setup guide](PROJECT-SETUP.md).
+Choose Docker or the [restricted Windows installation](NATIVE-INSTALL.md).
+Configure integrations and verify isolation before starting task processing.
 
-## Процесс
+## Workflow
 
-1. Люди вручную добавляют карточки на выделенную доску в To Do.
-2. Раз в час менеджер `gpt-6-luna / low` выбирает до двух независимых задач.
-3. Контроллер перемещает карточки в In Progress. Одновременно работают максимум два исполнителя.
-4. Исполнитель `gpt-6.1-sol / low` работает в отдельной новой ветке `codex/<card-id>`.
-   Резерв `gpt-6-sol / medium` включается только при явной недоступности основной модели,
-   а не для обхода лимитов Plus. При лимитах повторный запуск откладывается на час.
-5. Доверенный Git-сервис создаёт коммит из результата исполнителя, отправляет только ветку задачи
-   и создаёт PR в выбранную базовую ветку (либо сохраняет локальную ветку). Карточка сразу перемещается в Done и остаётся там. Архивирование ручное.
-6. Ревьюер `gpt-6-luna / low` проверяет конкретный SHA в копии только для чтения.
-   Он публикует обычный комментарий к PR. GitHub Approve и merge отсутствуют в его возможностях.
-7. Замечания автоматически передаются исходному исполнителю в ту же сессию, ветку и PR.
-   После трёх раундов нужен ответ человека, разрешающий следующий раунд.
-8. Уведомление о результате задачи в Telegram приходит только после внутреннего вердикта
-   «замечаний нет». Вопросы/запросы недостающих данных доставляются сразу.
+1. People manually add cards to the dedicated board's **To Do** list.
+2. Once an hour, the manager selects up to two independent tasks.
+3. The controller moves cards to **In Progress**. At most two executors run at once.
+4. Each executor works in a new `codex/<card-id>` branch.
+5. The trusted Git broker commits the changes and publishes only the task branch.
+   GitHub mode creates a PR targeting the configured base branch; local mode saves a
+   local branch and creates a local review record. The card moves to **Done**.
+   People archive cards manually.
+6. A reviewer checks the exact commit SHA using a read-only working copy. Findings
+   become PR comments or local review files. **Reviewers cannot submit GitHub Approve
+   or merge:** the controller exposes neither operation, and agents have no GitHub credentials.
+7. Findings return to the original executor's session, branch, and review.
+   Automatic fixes continue for up to three rounds by default. A human reply is
+   required to authorize another round.
+8. Telegram sends completion notifications only after the internal reviewer finds
+   no issues. Clarification questions and requests for missing resources are sent immediately.
 
-Все открытые PR в выбранную базовую ветку также обнаруживаются и проверяются. Чужие PR получают комментарии;
-автоматическое исправление выполняется только для задач, созданных системой. Внешнее изменение
-ветки системы останавливает автоматическую публикацию и запрашивает решение человека.
-После закрытия PR дальнейшие запуски по нему прекращаются.
+Default models are `gpt-6.1-sol / low` for executors, `gpt-6-sol / medium` as the
+fallback, and `gpt-6-luna / low` for managers and reviewers. These defaults are
+configurable. Fallback is used only when the primary model is explicitly unavailable,
+never to bypass subscription limits. A rate limit delays the next attempt by an hour.
 
-## Изоляция Docker
+Open PRs targeting the configured base branch are also discovered and reviewed.
+External PRs receive comments; automatic fixes apply only to system-created tasks.
+A human update to a system-owned branch stops automatic publication and requests a
+decision. Closed PRs receive no further runs.
 
-Рабочие копии агентов хранятся внутри Docker; каталог проекта с хоста не монтируется. Каждой задаче выдаются Docker
-named volumes для рабочей копии, закрытой Git-копии публикации, материалов ревью и отдельного
-состояния Codex каждой роли. Они физически хранятся в Docker/WSL виртуальном диске сервера.
-Для хранения на другом физическом диске требуется отдельно переместить Docker data root/WSL disk.
+## Docker isolation
 
-Агенты работают от UID 1000, без capabilities, с `no-new-privileges`, read-only rootfs, ограничениями
-RAM/CPU/PID и без Docker socket, bind mounts хоста, GitHub/Trello/Telegram токенов или remote Git.
-Ревьюеру и менеджеру рабочая копия монтируется read-only. Контейнеры подключены только к
-Docker internal network. Единственный выход — CONNECT-прокси с точным списком
-`chatgpt.com:443`, `api.openai.com:443`, `auth.openai.com:443`. Прокси блокирует частные адреса,
-произвольные порты, HTTP-перенаправление и другие домены. Отдельные firewall-правила закрывают
-доступ к службам Linux-хоста и соседним агентам. Внешний DNS отключён; адрес прокси задан явно.
-Контроллер проверяет наличие правил перед каждым запуском. После перезапуска Docker необходимо
-повторно выполнить `scripts/network-policy.sh`. Внешние зависимости заранее
-подготавливаются в образе; при нехватке агент спрашивает человека.
+Agent working copies stay inside Docker; the host project directory is not mounted.
+Each task has named volumes for its working copy, private publisher repository, review
+materials, and each role's Codex state. With WSL, volumes reside on the Docker/WSL
+virtual disk. Moving storage to another physical disk requires moving the Docker data
+root or WSL disk separately.
 
-CLI использует `danger-full-access` **только внутри этих контейнеров**: техническая граница
-здесь обеспечивается Docker, read-only mounts и сетевой изоляцией. Эта настройка не используется
-для Codex на хосте. Агент видит свои ChatGPT credentials, необходимые для доступа к модели.
-Apps, плагины, hooks, браузерные инструменты и встроенное делегирование Codex отключены явно.
-Интеграционные токены находятся исключительно у доверенного контроллера/Git-сервиса.
-Контейнеры используют общее ядро Linux и не заменяют отдельную VM для защиты от уязвимостей ядра.
+Agents run as UID 1000 with capabilities dropped, `no-new-privileges`, a read-only
+root filesystem, and RAM/CPU/process limits. They receive no Docker socket, host bind
+mounts, integration tokens, or remote Git configuration. Reviewer and manager working
+copies are mounted read-only. Containers join only the Docker internal network.
 
-Доверенный Git-сервис никогда не выполняет код проекта, hooks или команды агента. Он игнорирует
-агентский `.git`, переносит только обычные файлы в свою копию и делает fast-forward push
-в `codex/...`. Изменение базовой ветки, force push, Approve и merge не предусмотрены.
-Симлинки, подмодули и изменения `.github/workflows` требуют отдельной ручной подготовки.
-GitHub токен поступает Git-сервису по stdin, не попадает в аргументы команд, volumes или агента.
+The sole outbound route is a CONNECT proxy allowing exactly `chatgpt.com:443`,
+`api.openai.com:443`, and `auth.openai.com:443`. It rejects private addresses, other
+ports, redirects, and other domains. Firewall rules block Linux host services and
+neighboring agents. External DNS is disabled; the proxy address is explicit.
+The controller checks the rules before each run. Reapply `scripts/network-policy.sh`
+after restarting Docker. Prepare dependencies in the image; an agent asks a human
+when dependencies, data, or access are missing.
 
-## Доступы перед запуском
+Codex CLI uses `danger-full-access` **only inside these containers**, where Docker,
+read-only mounts, and network policy provide the boundary. Host-native execution does
+not use that setting. Agents can access their selected ChatGPT credentials to reach
+the model. Apps, plugins, hooks, browser tools, and built-in delegation are disabled.
+Integration credentials stay with the trusted controller and Git broker.
+Containers share the Linux kernel and do not replace a separate VM against kernel exploits.
 
-- GitHub CLI нужен только для GitHub-режима. Мастер авторизует выбранный аккаунт и проверяет доступ. Контроллер всегда выбирает `gh auth token --user <github_user>`, независимо от активного аккаунта. Нужны права чтения и записи, создания PR и комментариев.
-- Trello: API key и token с read/write к выделенной доске, board ID и три list ID.
-  Доска должна содержать разные списки To Do, In Progress и Done.
-- Telegram: токен бота и ID вашего личного чата после отправки `/start` боту.
-  Бот должен быть отдельным: сервис использует getUpdates; другие pollers/webhook не допускаются.
-- Codex: выбранная авторизация ChatGPT Plus в отдельном `secrets/auth.json`.
-  Не копируйте глобальный config, hooks, MCP или skills. Авторизацию можно подготовить отдельным
-  `CODEX_HOME`, затем `codex login --device-auth`. При истечении доступа обновите её вручную.
-Уведомление означает внутренний вердикт. GitHub Approve программно запрещён во всех режимах.
+The trusted Git broker never executes project code, hooks, or agent-supplied commands.
+It ignores the agent's `.git`, copies ordinary files into its own repository, and
+makes fast-forward pushes to `codex/...` only. Base-branch writes, force pushes,
+Approve, and merge are not exposed. Symlinks, submodules, and `.github/workflows`
+changes require separate human preparation. The broker receives the GitHub token
+over stdin, not through command arguments, persistent volumes, or the agent environment.
 
-Секреты сохраняются в `secrets/integrations.json` по форме `secrets.example.json` и защищаются ACL
-от других пользователей. В Git не попадают `secrets`, `config.json`, `.env`, `state` и бинарники.
-Ответы Telegram — текстовые уточнения, не канал передачи секретов или снятия ограничений.
+## Required access
 
-## Windows + WSL2
+- **GitHub mode:** GitHub CLI authentication for the selected project account, with
+  repository read/write access and permission to create PRs and comments. Setup
+  verifies the account and access. The controller explicitly selects
+  `gh auth token --user <github_user>`, regardless of the active CLI account.
+  Local mode does not use GitHub.
+- **Trello:** an API key, a read/write token for the dedicated board, its board ID,
+  and distinct list IDs for To Do, In Progress, and Done.
+- **Telegram:** a dedicated bot token and your private chat ID after sending `/start`.
+  The service uses `getUpdates`; do not share the bot with another poller or webhook.
+- **Codex:** the selected ChatGPT login in `secrets/auth.json`. API-key authentication
+  is not accepted. Prepare a separate `CODEX_HOME` with `codex login --device-auth`;
+  do not copy global configuration, hooks, MCP servers, or skills.
+  Refresh expired authentication manually.
 
-На Windows Server Docker Desktop не поддерживается. Используется Docker Engine внутри Ubuntu WSL2,
-контроллер запускается на Windows и обращается к нему через `wsl.exe --exec docker`.
-Так сохраняется доступ к Windows GitHub credential store без переноса GitHub токенов в Linux.
+Save integration secrets in `secrets/integrations.json` using `secrets.example.json`
+and restrict access with filesystem permissions. Secrets, local configurations,
+state, `.env`, and binaries are excluded from Git. Telegram replies are clarification
+text, not a way to supply secrets or relax isolation.
 
-1. Обеспечить nested virtualization, если Windows сама работает в VM.
-2. Установить `wsl --install --distribution Ubuntu-24.04 --no-launch`.
-3. После запуска Ubuntu выполнить от root `scripts/install-docker-ubuntu.sh`.
-   Скрипт использует официальный APT-репозиторий Docker и не меняет режим виртуализации Windows.
-4. Выполнить `scripts/Setup.ps1`. Он собирает образы, internal network и прокси.
-5. Настроить `config.json`, `secrets/integrations.json`, `secrets/auth.json`.
-   Указать полный путь к `gh.exe`, если PATH текущего процесса ещё не обновился.
-6. В Linux выполнить `scripts/check-isolation.sh` и проверить read-only mount ревьюера.
-7. Выполнить `scripts/Start-Orchestrator.ps1 -Check`, затем `scripts/Start-Orchestrator.ps1`.
-8. Проверить одну тестовую карточку, PR, уточнение через Telegram Reply, цикл исправления
-   и единственное уведомление после положительного внутреннего ревью.
-9. После сквозной проверки настроить запуск контроллера в Task Scheduler под владельцем
-   авторизованных GitHub аккаунтов. Автозапуск пока не установлен.
+## Windows with WSL2 and Docker
 
-Для обычного Linux установить `docker_distro: ""`, использовать `gh`, авторизовать нужный аккаунт,
-собрать `go build -o bin/orchestrator ./cmd/orchestrator`, затем выполнить docker build/compose
-и передать интеграционные переменные окружения контроллеру. Код контроллера переносим между ОС.
+Docker Desktop is not supported on Windows Server. This installation uses Docker
+Engine inside Ubuntu WSL2 and runs the controller on Windows through
+`wsl.exe --exec docker`. GitHub credentials remain in the Windows credential store.
 
-## Эксплуатация
+1. Enable nested virtualization at the VM host if Windows itself runs in a VM.
+2. Run `wsl --install --distribution Ubuntu-24.04 --no-launch`.
+3. Start Ubuntu and run `scripts/install-docker-ubuntu.sh` as root. It uses Docker's
+   official APT repository and does not change Windows virtualization settings.
+4. Run `scripts/Configure-Project.ps1` and `scripts/Setup.ps1 -Config config.json`.
+   Setup builds images, the internal network, and the proxy.
+5. Configure `config.json`, `secrets/integrations.json`, and `secrets/auth.json`.
+   Set the absolute `gh.exe` path if the current process's PATH has not refreshed.
+6. Run `scripts/check-isolation.sh` in Linux and verify the reviewer's read-only mount.
+7. Run `scripts/Start-Orchestrator.ps1 -Config config.json -Check`, then run it without `-Check`.
+8. Verify one test card, PR, Telegram Reply, automatic fix cycle, and completion
+   notification after a successful internal review.
+9. Only after that end-to-end check, configure Task Scheduler under the account that
+   owns the selected credentials. These scripts do not install automatic startup.
 
-Отвечайте **Reply на сообщение с вопросом**. Система хранит его message ID и отдельный thread ID
-агента, поэтому два одновременных уточнения не смешиваются. `/status` показывает состояния задач.
-Обычные сообщения без Reply не запускают работу и не меняют разрешения.
-При недоступности Telegram новые запуски приостанавливаются до восстановления канала.
+On a regular Linux host, set `docker_distro` to `""`, configure `gh` and the chosen
+account, build with `go build -o bin/orchestrator ./cmd/orchestrator`, and build/start
+the Docker images and Compose services. Supply integration environment variables to
+the controller. The controller code is portable; the interactive PowerShell wizard
+is the Windows setup path.
 
-Состояние сохраняется атомарно в `state/state.json`. После аварийного перезапуска прерванные
-задачи приостанавливаются и требуют ответа владельца; оставшиеся контейнеры останавливаются.
-Файл `state/controller.lock` запрещает второй экземпляр. После аварии удалять его можно только
-после проверки, что старый процесс завершён. Named volumes сохраняются для восстановления;
-автоматическое удаление копий не включено. Очистку и сроки хранения определяет владелец.
+## Operation
 
-Получение результата может повторить Telegram-уведомление при аварии между отправкой и записью
-состояния: Telegram sendMessage не поддерживает идемпотентный ключ. Отправка идёт только после
-вердикта для актуального head SHA. Создание PR восстанавливается по точному имени ветки.
+Use **Reply on the question message**. Its message ID maps to the requesting agent's
+thread ID, so simultaneous questions stay separate. `/status` lists task states.
+Messages without Reply do not start work or change permissions. New runs pause
+while Telegram is unavailable.
 
-## Проверки разработки
+State is saved atomically in `state_dir/state.json`. Interrupted jobs pause after a
+crash and require a human reply; abandoned containers are stopped.
+`state_dir/controller.lock` prevents a second controller for that state directory.
+Remove a stale lock only after confirming the previous process has exited.
+Named volumes are retained for recovery; automatic cleanup is not enabled.
+The operator sets retention and cleanup rules.
 
-`go test ./...` и `go vet ./...` проверяют маршрутизацию Reply, предел двух исполнителей,
-запрет результата Approve, комментарии вместо reviews, устаревшие SHA, поведение при лимитах,
-восстановление PR/состояния, игнорирование агентского Git и сетевую allowlist.
-Они не заменяют запуск `check-isolation.sh` и сквозную проверку с реальными интеграциями.
+A crash between sending a Telegram notification and recording it may cause a
+duplicate, because `sendMessage` has no idempotency key. Completion notifications
+apply only to the current head SHA. PR creation recovers using the exact task branch.
 
-Официальные источники: [Codex non-interactive](https://learn.chatgpt.com/docs/non-interactive-mode),
+English is the default for documentation, system prompts, and operator messages.
+Agents use English for summaries, questions, and findings unless a task explicitly
+requests another language. Task descriptions and project content may use any language.
+
+## Development checks
+
+Run `go test ./...` and `go vet ./...`. Checks cover Reply routing, executor concurrency,
+reviewer capability restrictions, stale SHAs, rate limits, recovery, local publication
+and review, project/account separation, agent Git isolation, and proxy rules.
+They do not replace isolation probes or end-to-end tests with real integrations.
+
+Reference documentation: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode),
 [Codex authentication](https://learn.chatgpt.com/docs/auth),
-[Docker Engine Ubuntu](https://docs.docker.com/engine/install/ubuntu/),
+[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/), and
 [Docker Desktop Windows requirements](https://docs.docker.com/desktop/setup/install/windows-install/).
 
-## Второй вариант установки
+## Installation without Docker or a VM
 
-Установка на Windows без Docker и VM описана в [NATIVE-INSTALL.md](NATIVE-INSTALL.md).
+See [NATIVE-INSTALL.md](NATIVE-INSTALL.md) for the restricted Windows backend,
+its isolation checks, and its limitations.

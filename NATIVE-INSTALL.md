@@ -1,55 +1,57 @@
-# Установка на Windows без Docker и VM
+# Windows installation without Docker or a VM
 
-Второй вариант использует elevated Windows sandbox Codex и отдельного пользователя
-`CodexSandboxOffline`. Docker-вариант остаётся доступен. Копии проекта в этом режиме
-хранятся на диске Windows в `native_root\jobs`; каталог выбирается конфигурацией.
+**English (default)** | [Русский](docs/ru/NATIVE-INSTALL.md)
 
-Из PowerShell администратора в каталоге репозитория:
+This backend uses Codex's elevated Windows sandbox and the dedicated
+`CodexSandboxOffline` account. The Docker backend remains available. Project copies
+reside on the Windows disk under `native_root\jobs`, as selected in configuration.
+
+From an Administrator PowerShell in the repository directory:
 
 ```powershell
 .\scripts\Setup-Native.ps1
-# Заполнить config.native.json и secrets/integrations.json, подготовить secrets/auth.json.
+# Configure config.native.json and secrets/integrations.json; prepare secrets/auth.json.
 .\scripts\Start-Orchestrator.ps1 -Config config.native.json -Check
 .\scripts\Start-Orchestrator.ps1 -Config config.native.json
 ```
 
-Нужны Git, Go, GitHub CLI и Codex CLI. В конфигурации задаются абсолютные пути к
-Codex и GitHub CLI. Используется ChatGPT-вход для Plus; API key не принимается.
-GitHub-доступ определяется выбранным аккаунтом проекта; в локальном режиме GitHub не используется. Настройка источника: [PROJECT-SETUP.md](PROJECT-SETUP.md).
-Для интеграций нужны ключ и токен Trello, ID доски и трёх списков, токен Telegram-бота
-и ID личного чата. Секреты и локальная конфигурация исключены из Git.
+Install Git, Go, and Codex CLI; GitHub mode also requires GitHub CLI. Set the absolute
+Codex and GitHub CLI paths in configuration. Authentication uses a ChatGPT login;
+API keys are not accepted. The selected project account supplies GitHub access.
+Local mode does not use GitHub. See [PROJECT-SETUP.md](PROJECT-SETUP.md) to choose a
+project source. Integrations require a Trello key and token, board and three list IDs,
+a Telegram bot token, and a private chat ID. Secrets and local configurations stay out of Git.
 
-Исполнитель может менять только свою рабочую копию и временные файлы. Ревьюер
-получает рабочую копию и материалы ревью для чтения. GitHub-токен и публикация
-изменений остаются у доверенного контроллера. Программный запрет Approve/merge
-действует в обоих вариантах. Настройки пользователя, плагины и дополнительные
-агенты не подключаются к заданиям.
+An executor can change only its working copy and scratch files. A reviewer reads
+the working copy and review materials. GitHub credentials and publication remain
+with the trusted controller. Approve and merge are not exposed in either backend.
+Global user settings, plugins, and additional agents are not loaded into tasks.
 
-Установка добавляет постоянные WFP-фильтры IPv4/IPv6 для SID пользователя
-`CodexSandboxOffline`: блокируются интернет, локальная сеть и localhost.
-Это затрагивает все процессы этого sandbox-пользователя, включая другие offline
-сеансы Codex. Контроллер, модельный клиент и обычные Windows-пользователи имеют
-свои сетевые права. После изменения sandbox-учётной записи нужна повторная
-проверка политики администратором; система не заменяет несовпадающие правила.
+Setup installs persistent IPv4/IPv6 WFP filters for the SID of `CodexSandboxOffline`,
+blocking Internet, LAN, and localhost connections. The rules affect every process
+under that account, including other offline Codex sessions. The controller, model
+client, and ordinary Windows accounts retain their own network access. Changes to
+the sandbox account require administrator review of the policy. The system does
+not replace filters whose contents differ from the expected rules.
 
-Дерево процессов задания ограничено Windows Job Object: 2 ГБ памяти, 256 процессов
-и 25% CPU машины. При закрытии контроллера дерево завершается. Процесс стартует
-приостановленным и продолжает работу после включения ограничений.
+Each task process tree is placed in a Windows Job Object with a 2 GB memory limit,
+256-process limit, and 25% of the machine's CPU. Closing the controller terminates
+the tree. The process starts suspended and resumes after these limits are attached.
 
-`Check-NativeIsolation.ps1` проверяет реальную offline-учётную запись, запись
-исполнителя, режим чтения ревьюера, запрет чтения контрольного файла вне задания,
-интернет и localhost. Без успешной проверки запуск запрещён. Результат привязан
-к хешу Codex CLI; после его обновления проверку нужно повторить.
+`Check-NativeIsolation.ps1` checks the actual offline account, executor writes,
+reviewer read-only access, denial of a sentinel outside the task, Internet blocking,
+and localhost blocking. Startup is refused unless the checks pass. The receipt is
+bound to the Codex CLI executable hash; repeat the checks after updating it.
 
-Этот режим слабее отдельной VM или контейнера. Windows и установленные инструменты
-доступны для чтения; известные посторонние каталоги дисков закрываются профилем
-прав, а приватные данные защищены NTFS. Профиль не заменяет изоляцию ядра и не
-гарантирует закрытие новых каталогов, появившихся во время задания. Не храните
-секреты в общедоступных каталогах системных инструментов. Проверки на текущем
-Windows Server прошли, но это не означает официальной поддержки всех конфигураций
-Windows Server самим Codex.
+This backend provides weaker isolation than a separate VM or container. Windows
+and installed tools remain readable. Permission profiles deny known unrelated
+top-level directories, while NTFS protects private data. This does not isolate the
+kernel or guarantee that new directories created during a task are blocked. Do not
+store secrets in publicly readable tool directories. Probes passed on the development
+Windows Server, but that does not establish official Codex support for every Windows
+Server configuration.
 
-Установка не запускает обработку карточек. После подключения доступов нужна
-сквозная проверка одной карточки, PR, Telegram Reply и автоматического исправления.
-Автозапуск следует включать после этой проверки. Для максимально строгой изоляции
-используйте Docker-вариант на машине с доступной виртуализацией.
+Installation does not start card processing. After configuring access, run an
+end-to-end check with one card, a PR or local review, a Telegram Reply, and an automatic
+fix. Enable automatic startup only afterward. Prefer Docker on a host with available
+virtualization when stricter isolation is required.

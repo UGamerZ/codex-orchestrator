@@ -113,7 +113,7 @@ func (a *API) CreatePR(ctx context.Context, j *Job) (int, string, error) {
 	if len(existing) > 0 {
 		return existing[0].Number, existing[0].URL, nil
 	}
-	body := j.Summary + "\n\nTrello: https://trello.com/c/" + j.Card + "\n\nСоздан изолированным исполнителем. Слияние выполняет человек."
+	body := j.Summary + "\n\nTrello: https://trello.com/c/" + j.Card + "\n\nCreated by an isolated executor. Merging is performed by a human."
 	b, e = a.gh(ctx, "api", "--method", "POST", "repos/"+a.C.Repository+"/pulls", "-f", "title="+j.Title, "-f", "head="+j.Branch, "-f", "base="+a.C.BaseBranch, "-f", "body="+body)
 	if e != nil {
 		return 0, "", e

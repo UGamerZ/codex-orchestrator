@@ -1,20 +1,22 @@
-# Настройка проекта
+# Project setup
 
-Система не привязана к владельцу своего исходного кода, проекту или GitHub-аккаунту.
-Каждая установка выбирает источник проекта, базовую ветку, аккаунт, модели и
-интеграции в своей локальной конфигурации. Мастер не запускает агентов.
+**English (default)** | [Русский](docs/ru/PROJECT-SETUP.md)
+
+The system is not tied to its source-code owner, a project, or a GitHub account.
+Each installation selects its project source, base branch, account, models, and
+integrations through local configuration. The wizard does not start agents.
 
 ```powershell
 .\scripts\Configure-Project.ps1
 ```
 
-Мастер предлагает Docker или ограниченный Windows-режим, затем существующий
-GitHub-репозиторий или новый локальный проект. Setup и Start также вызывают мастер,
-если файл конфигурации отсутствует. Существующая конфигурация не перезаписывается
-без явного ввода `REPLACE`. Для разных проектов используйте отдельные файлы,
-состояние, рабочие каталоги, доски и Telegram-ботов.
+Choose Docker or restricted Windows execution, then an existing GitHub repository
+or a new local project. Setup and Start also launch the wizard when configuration
+is missing. Replacing an existing configuration requires typing `REPLACE`.
+Use separate configuration files, state directories, working directories, boards,
+and Telegram bots for separate projects.
 
-## Существующий GitHub-репозиторий
+## Existing GitHub repository
 
 ```powershell
 .\scripts\Configure-Project.ps1 -Mode github -Backend docker `
@@ -22,19 +24,19 @@ GitHub-репозиторий или новый локальный проект.
   -GitHubUser LOGIN -BaseBranch develop
 ```
 
-Если выбранного аккаунта нет в GitHub CLI, мастер запускает авторизацию через
-device flow. Нужно войти именно под выбранным аккаунтом. Затем проверяются
-фактический login, право записи в репозиторий и существование базовой ветки.
-Активный аккаунт CLI и переменные токенов не определяют рабочую учётную запись.
-Токен хранится средствами GitHub CLI, не записывается в конфигурацию проекта.
-Эти проверки повторяются контроллером до старта агентов.
+If GitHub CLI has no credentials for the selected account, the wizard starts browser
+device authorization. Sign in as that account. Setup verifies the actual login,
+repository write access, and the existence of the base branch. The active CLI account
+and token environment variables do not determine the working identity.
+GitHub CLI stores the token; it is not written to project configuration.
+The controller repeats these access checks before agents start.
 
-Для нового репозитория исходный проект клонируется только доверенным брокером
-после запуска задач. Мастер существующего репозитория не создаёт копию проекта.
-Коммиты идут исключительно в ветки `codex/...`; PR создаются в выбранную ветку.
-Done означает создание PR. Ревьюеры оставляют комментарии, не Approve и не merge.
+The wizard does not clone an existing repository. The trusted broker fetches the
+project when tasks run. Commits go only to `codex/...` branches, and PRs target the
+selected base branch. **Done** means a PR has been created. Reviewers publish comments,
+not GitHub Approve or merge.
 
-## Новый локальный проект
+## New local project
 
 ```powershell
 .\scripts\Configure-Project.ps1 -Mode local -Backend native-windows `
@@ -42,10 +44,10 @@ Done означает создание PR. Ревьюеры оставляют �
   -BaseBranch main -LocalOnly
 ```
 
-Выбирается новый пустой каталог. Мастер создаёт минимальный проект, первый коммит
-и отдельное bare Git-хранилище `.orchestrator.git`. Существующие файлы не добавляются
-в Git автоматически. Без `-LocalOnly` мастер предложит вместо локальной работы
-создать приватный GitHub-репозиторий. Также это можно выбрать через `-Publish`:
+Choose a new empty directory. The wizard creates a minimal project, its initial
+commit, and a separate bare Git store at `.orchestrator.git`. Existing files are never
+automatically staged. Without `-LocalOnly`, the wizard offers to create a private
+GitHub repository instead. Select that explicitly with `-Publish`:
 
 ```powershell
 .\scripts\Configure-Project.ps1 -Mode local -Backend docker -Publish `
@@ -53,15 +55,16 @@ Done означает создание PR. Ревьюеры оставляют �
   -Repository OWNER/NEW-REPOSITORY -GitHubUser LOGIN -BaseBranch main
 ```
 
-В полностью локальном режиме GitHub CLI и GitHub-авторизация не используются.
-Исходные коммиты передаются брокеру Git bundle без монтирования каталога проекта
-в контейнер. Результаты возвращаются в bare-хранилище как локальные ветки. Это
-работает с обоими вариантами изоляции. Ревью сохраняется в `state_dir/reviews`:
-JSON с описанием задачи и Markdown с замечаниями для конкретного SHA.
-Done означает сохранение локальной ветки и постановку на локальное ревью;
-Telegram-уведомление о завершении приходит после ревью без замечаний.
+Fully local mode uses no GitHub CLI or GitHub authentication. Source commits reach
+the broker as Git bundles, without mounting the host project directory into a
+container. Results return to the bare store as local branches. Both isolation
+backends support this workflow. Reviews are saved under `state_dir/reviews`: JSON
+task descriptions and Markdown findings for the specific commit SHA.
 
-Посмотреть и принять результат вручную из каталога локального проекта:
+In local mode, **Done** means the task branch has been saved and queued for local
+review. Telegram sends completion notifications only after review finds no issues.
+
+Inspect and accept a result manually from the local project directory:
 
 ```powershell
 git --git-dir=.orchestrator.git branch --list
@@ -70,21 +73,22 @@ git diff main...FETCH_HEAD
 git merge FETCH_HEAD
 ```
 
-Система не меняет базовую ветку и не выполняет merge. После ручного принятия
-синхронизируйте базовую ветку хранилища, чтобы новые задания получили новый исходник:
+Replace `main` with your configured base branch where appropriate. The system never
+changes that branch or merges results. After accepting changes manually, synchronize
+the store's base branch so new tasks receive the updated source:
 
 ```powershell
 git --git-dir=.orchestrator.git fetch . main:main
 ```
 
-При изменении ветки задания человеком автоматическое исправление останавливается.
-Состояние одного проекта нельзя использовать для другого проекта, аккаунта или
-базовой ветки. Docker-контейнеры и volumes имеют отдельные имена для каждого проекта.
+A human update to a task branch stops automatic fixes. State from one project cannot
+be reused for another project, account, or base branch. Docker containers and volumes
+have separate names for each project instance.
 
-## Завершение установки
+## Complete installation
 
-Заполните Trello, Telegram и авторизацию Codex. Затем выполните Setup для выбранной
-изоляции и Start с тем же файлом конфигурации. Для native Windows:
+Configure Trello, Telegram, and Codex authentication. Run Setup for the selected
+isolation backend, then Start with the same configuration. For native Windows:
 
 ```powershell
 .\scripts\Setup-Native.ps1 -Config config.local.json
@@ -92,6 +96,14 @@ git --git-dir=.orchestrator.git fetch . main:main
 .\scripts\Start-Orchestrator.ps1 -Config config.local.json
 ```
 
-Модели и reasoning effort задаются конфигурацией. Значения в шаблоне — исходные
-настройки, а не ограничения на доступные модели. Максимум два исполнителя и запрет
-Approve/merge остаются правилами безопасности системы.
+For Docker on Windows with WSL2, use `Setup.ps1 -Config YOUR-CONFIG.json` and follow
+the [Docker installation instructions](README.md#windows-with-wsl2-and-docker).
+For native execution, review [the native isolation limitations](NATIVE-INSTALL.md).
+
+Models and reasoning effort are configured per installation. Template values are
+defaults, not a fixed list of permitted models. The maximum of two executors and the
+Approve/merge prohibition remain safety constraints.
+
+English is the default language for documentation, system prompts, and operator
+messages. Agents use English for output unless a task explicitly requests another
+language. Task descriptions and project content do not need to be in English.

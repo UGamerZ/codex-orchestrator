@@ -1,14 +1,15 @@
-<h1>Автоматизированная работа с задачами через Codex</h1>
+<h1>Automated task execution with Codex</h1>
 <br>
-<p>Подготовлена отдельная система для выполнения задач из Trello и проверки изменений перед передачей человеку. Для её запуска нужно завершить настройку сервера и подключить Trello и Telegram.</p>
+<p>A separate system handles Trello tasks and reviews changes before handing them to a person. Complete the server setup and connect Trello and Telegram before starting it.</p>
 
-<h2>Новое</h2>
+<h2>New</h2>
 <ul>
-  <li><strong>Выбор проекта.</strong> При установке можно подключить существующий репозиторий с нужного аккаунта GitHub или создать новый локальный проект. Локальная работа включает отдельные ветки и ревью без GitHub; при желании новый проект можно сразу опубликовать в приватном репозитории.</li>
-  <li><strong>Очередь задач.</strong> Менеджер проверяет выделенную доску раз в час. Одновременно задачи могут выполнять два исполнителя.</li>
-  <li><strong>Изменения на проверку.</strong> Каждая задача выполняется отдельно и передаётся в виде запроса на изменение проекта. После создания запроса карточка переходит в Done и остаётся там до ручного архивирования.</li>
-  <li><strong>Проверка и исправление.</strong> Ревьюер проверяет результат и передаёт замечания исполнителю для автоматического исправления. Окончательное одобрение и объединение изменений остаются человеку.</li>
-  <li><strong>Уточнения в Telegram.</strong> Если агенту не хватает условий задачи, данных или доступа, он приостанавливает работу и задаёт вопрос. Ответ на сообщение возвращается тому агенту, который его задал.</li>
-  <li><strong>Уведомление о результате.</strong> Сообщение о выполненной задаче приходит после завершения проверки без замечаний.</li>
-  <li><strong>Изолированная работа.</strong> Доступны два варианта установки: внутри Docker или в ограниченной среде Windows без виртуальной машины. Рабочие копии проекта размещаются отдельно. Агенты не получают доступы к управлению GitHub, Trello и Telegram.</li>
+  <li><strong>Project selection.</strong> Connect an existing GitHub repository using an account with access, or create a new local project. Local development includes separate branches and reviews without GitHub. New projects can optionally be published to a private repository.</li>
+  <li><strong>Task queue.</strong> The manager checks a dedicated board once an hour. Up to two executors can work at the same time.</li>
+  <li><strong>Changes ready for review.</strong> Each task runs separately and produces a pull request or a local branch for review. The card moves to Done and stays there until someone archives it manually.</li>
+  <li><strong>Review and fixes.</strong> The reviewer sends findings back to the executor for automatic fixes. Final approval and merging remain with a person.</li>
+  <li><strong>Telegram questions.</strong> If an agent lacks clear requirements, data, or access, it pauses and asks a question. A reply returns to the agent that asked it.</li>
+  <li><strong>Completion notifications.</strong> A task completion message is sent after review finishes without findings.</li>
+  <li><strong>Isolated execution.</strong> Choose Docker or a restricted Windows environment without a virtual machine. Project working copies are separate, and agents do not receive GitHub, Trello, or Telegram management credentials.</li>
+  <li><strong>English by default.</strong> The README, setup guides, system instructions, and operator messages use English. Russian documentation is available as a separate translation.</li>
 </ul>

@@ -1,1 +1,1 @@
-Make project setup universal with local Git review and selected GitHub authentication
+Make English the default for documentation, agent instructions and operator messages
