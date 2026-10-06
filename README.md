@@ -127,7 +127,10 @@ is the Windows setup path.
 
 Use **Reply on the question message**. Its message ID maps to the requesting agent's
 thread ID, so simultaneous questions stay separate. `/status` lists task states.
-Messages without Reply do not start work or change permissions. New runs pause
+Send `/check` to request an immediate board check without waiting for the hourly scan.
+It preserves the hourly schedule and executor limits. If the manager is busy or waiting
+for clarification, the request stays queued until that manager run finishes.
+Other messages without Reply do not start work or change permissions. New runs pause
 while Telegram is unavailable.
 
 State is saved atomically in `state_dir/state.json`. Interrupted jobs pause after a

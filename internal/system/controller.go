@@ -84,12 +84,19 @@ func (c *Controller) poll(ctx context.Context) error {
 	if e := c.discoverPRs(ctx); e != nil {
 		log.Printf("GitHub: %v", e)
 	}
-	if time.Since(c.State.LastManager) >= time.Duration(c.C.ManagerInterval)*time.Second {
+	due := time.Since(c.State.LastManager) >= time.Duration(c.C.ManagerInterval)*time.Second
+	manager := c.State.Jobs["manager"]
+	if (due || c.State.BoardCheckRequested) && (manager == nil || manager.Stage == "done") {
 		cards, e := c.API.Cards(ctx)
 		if e != nil {
 			return e
 		}
-		c.State.LastManager = time.Now().UTC()
+		// Manual requests do not postpone the next scheduled check.
+		if due {
+			c.State.LastManager = time.Now().UTC()
+		}
+		manual := c.State.BoardCheckRequested
+		c.State.BoardCheckRequested = false
 		pending := []*Job{}
 		for _, card := range cards {
 			if !card.Closed && card.List == c.C.Todo {
@@ -103,6 +110,11 @@ func (c *Controller) poll(ctx context.Context) error {
 		if len(pending) > 0 {
 			if j := c.State.Jobs["manager"]; j == nil || j.Stage == "done" {
 				c.State.Jobs["manager"] = &Job{ID: "manager", Title: "Prioritize Trello tasks", Role: "manager", Stage: "queued"}
+			}
+		}
+		if manual {
+			if _, e := c.API.Send(ctx, fmt.Sprintf("Board check complete: %d new To Do task(s). Tasks are queued for the manager; executor limits still apply.", len(pending))); e != nil {
+				log.Printf("board check notification: %v", e)
 			}
 		}
 	}
@@ -148,7 +160,21 @@ func (c *Controller) answers(ctx context.Context) error {
 	for _, u := range updates {
 		m := u.Message
 		if m != nil && m.Chat.ID == c.C.Chat && m.Chat.Type == "private" {
-			if m.Text == "/status" {
+			if strings.TrimSpace(m.Text) == "/check" {
+				c.State.BoardCheckRequested = true
+				// Persist before acknowledging so a restart cannot lose the request.
+				c.State.TelegramOffset = u.ID + 1
+				if e = c.save(); e != nil {
+					return e
+				}
+				message := "Board check requested. The hourly schedule and executor limits are unchanged."
+				if manager := c.State.Jobs["manager"]; manager != nil && manager.Stage != "done" {
+					message = "Board check queued until the current manager finishes. If it is waiting for clarification, reply to its question first."
+				}
+				if _, e = c.API.Send(ctx, message); e != nil {
+					return e
+				}
+			} else if m.Text == "/status" {
 				rows := []string{}
 				for _, j := range c.State.Jobs {
 					rows = append(rows, fmt.Sprintf("[%s] %s: %s", j.ID, j.Stage, j.Title))

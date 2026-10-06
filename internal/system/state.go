@@ -38,10 +38,11 @@ type Job struct {
 	ClosedPR        bool      `json:"closed_pr"`
 }
 type State struct {
-	Jobs           map[string]*Job `json:"jobs"`
-	TelegramOffset int64           `json:"telegram_offset"`
-	LastManager    time.Time       `json:"last_manager"`
-	Pending        []*Job          `json:"pending"`
+	BoardCheckRequested bool            `json:"board_check_requested,omitempty"`
+	Jobs                map[string]*Job `json:"jobs"`
+	TelegramOffset      int64           `json:"telegram_offset"`
+	LastManager         time.Time       `json:"last_manager"`
+	Pending             []*Job          `json:"pending"`
 }
 
 func LoadState(dir string) (*State, error) {

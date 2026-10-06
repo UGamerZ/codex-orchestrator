@@ -1,1 +1,1 @@
-Make English the default for documentation, agent instructions and operator messages
+Add on-demand Trello board checks through Telegram /check

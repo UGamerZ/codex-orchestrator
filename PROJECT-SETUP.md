@@ -104,6 +104,10 @@ Models and reasoning effort are configured per installation. Template values are
 defaults, not a fixed list of permitted models. The maximum of two executors and the
 Approve/merge prohibition remain safety constraints.
 
+After starting the controller, send `/check` to the Telegram bot for an immediate
+board check, or `/status` to inspect task states. Manual checks preserve the hourly
+schedule and do not start another manager while one is already active.
+
 English is the default language for documentation, system prompts, and operator
 messages. Agents use English for output unless a task explicitly requests another
 language. Task descriptions and project content do not need to be in English.
