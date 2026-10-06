@@ -15,6 +15,7 @@ Configure integrations and verify isolation before starting task processing.
 
 1. People manually add cards to the dedicated board's **To Do** list.
 2. Once an hour, the manager selects up to two independent tasks.
+   A card title can be the complete specification; an empty description is not a blocker.
 3. The controller moves cards to **In Progress**. At most two executors run at once.
 4. Each executor works in a new `codex/<card-id>` branch.
 5. The trusted Git broker commits the changes and publishes only the task branch.
@@ -71,7 +72,9 @@ Containers share the Linux kernel and do not replace a separate VM against kerne
 The trusted Git broker never executes project code, hooks, or agent-supplied commands.
 It ignores the agent's `.git`, copies ordinary files into its own repository, and
 makes fast-forward pushes to `codex/...` only. Base-branch writes, force pushes,
-Approve, and merge are not exposed. Symlinks, submodules, and `.github/workflows`
+Approve, and merge are not exposed. Existing tracked relative symlinks are preserved
+only when their complete target chain stays inside the working copy and does not
+reference Git metadata. New or modified links, submodules, and `.github/workflows`
 changes require separate human preparation. The broker receives the GitHub token
 over stdin, not through command arguments, persistent volumes, or the agent environment.
 
@@ -132,6 +135,13 @@ It preserves the hourly schedule and executor limits. If the manager is busy or 
 for clarification, the request stays queued until that manager run finishes.
 Other messages without Reply do not start work or change permissions. New runs pause
 while Telegram is unavailable.
+
+Agents resolve routine implementation choices autonomously using the task and local
+code. They ask only about genuine blockers and combine related questions. Replies
+are saved with their questions and supplied on subsequent turns in the same session.
+An identical answered agent question is retried once with that context instead of
+being immediately sent again. Setup failures are labeled **System blocker**, so they
+are not mistaken for questions from an executor that has not started.
 
 State is saved atomically in `state_dir/state.json`. Interrupted jobs pause after a
 crash and require a human reply; abandoned containers are stopped.

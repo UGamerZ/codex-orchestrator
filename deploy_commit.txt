@@ -1,1 +1,1 @@
-Add on-demand Trello board checks through Telegram /check
+Improve agent autonomy, retain clarification history and preserve safe project links

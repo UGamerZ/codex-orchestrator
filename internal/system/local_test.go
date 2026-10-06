@@ -27,7 +27,12 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 	}
 	run("init", "--initial-branch=main", source)
 	os.WriteFile(filepath.Join(source, "README.md"), []byte("baseline\n"), 0600)
-	run("-C", source, "add", "README.md")
+	os.MkdirAll(filepath.Join(source, "shared"), 0755)
+	os.WriteFile(filepath.Join(source, "shared", "content"), []byte("shared"), 0600)
+	if e := os.Symlink("shared", filepath.Join(source, "alias")); e != nil {
+		t.Fatal(e)
+	}
+	run("-C", source, "-c", "core.symlinks=true", "add", "--all")
 	run("-C", source, "-c", "user.name=Test", "-c", "user.email=test@localhost", "commit", "-m", "baseline")
 	c := Config{ProjectMode: "local", LocalRepository: filepath.Join(root, "store.git"), BaseBranch: "main", StateDir: filepath.Join(root, "state"), NativeRoot: filepath.Join(root, "native")}
 	run("clone", "--bare", source, c.LocalRepository)
@@ -67,6 +72,14 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 			t.Fatal(e)
 		}
 		j.Head = result.SHA
+		link, e := localGit(ctx, c, "ls-tree", j.Head, "--", "alias")
+		if e != nil || !strings.HasPrefix(string(link), "120000 ") {
+			t.Fatal("publication changed the tracked symlink mode")
+		}
+		linkTarget, e := localGit(ctx, c, "show", j.Head+":alias")
+		if e != nil || string(linkTarget) != "shared" {
+			t.Fatal("publication changed the tracked symlink target")
+		}
 		j.PR, j.PRURL, e = a.CreatePR(ctx, &j)
 		if e != nil {
 			t.Fatal(e)

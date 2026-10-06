@@ -264,6 +264,18 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		return e
 	}
 	// The trusted publisher copies the tree into its own repository. Agent .git is ignored.
+	baselineArchive, e := git(dir, "archive", "HEAD")
+	if e != nil {
+		return e
+	}
+	allowedLinks, e := archiveLinks(baselineArchive)
+	if e != nil {
+		return e
+	}
+	baselineTree, e := git(dir, "ls-tree", "-r", "-z", "HEAD")
+	if e != nil {
+		return e
+	}
 	entries, e := os.ReadDir(dir)
 	if e != nil {
 		return e
@@ -275,11 +287,27 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 			}
 		}
 	}
-	if e = copyTree(p.Workspace, dir); e != nil {
+	if e = copyTree(p.Workspace, dir, allowedLinks); e != nil {
 		return e
 	}
 	if _, e = git(dir, "add", "--all"); e != nil {
 		return e
+	}
+	// Preserve original Git link blobs, including slash spelling on Windows.
+	for _, entry := range strings.Split(string(baselineTree), "\x00") {
+		fields := strings.SplitN(entry, "\t", 2)
+		if len(fields) != 2 {
+			continue
+		}
+		meta := strings.Fields(fields[0])
+		if len(meta) != 3 || meta[0] != "120000" {
+			continue
+		}
+		if info, err := os.Lstat(filepath.Join(p.Workspace, filepath.FromSlash(fields[1]))); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			if _, e = git(dir, "update-index", "--cacheinfo", "120000,"+meta[2]+","+fields[1]); e != nil {
+				return e
+			}
+		}
 	}
 	b, e := git(dir, "diff", "--cached", "--name-only")
 	if e != nil {
@@ -346,11 +374,15 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	return json.NewEncoder(output).Encode(result)
 }
 func extract(b []byte, root string) error {
+	links, e := archiveLinks(b)
+	if e != nil {
+		return e
+	}
 	tr := tar.NewReader(strings.NewReader(string(b)))
 	for {
 		h, e := tr.Next()
 		if e == io.EOF {
-			return nil
+			return createLinks(root, links)
 		}
 		if e != nil {
 			return e
@@ -361,6 +393,8 @@ func extract(b []byte, root string) error {
 		}
 		dest := filepath.Join(root, filepath.FromSlash(p))
 		switch h.Typeflag {
+		case tar.TypeSymlink:
+			continue
 		case tar.TypeXGlobalHeader:
 			// Git archive emits its commit ID as global PAX metadata.
 			continue
@@ -389,8 +423,13 @@ func extract(b []byte, root string) error {
 		}
 	}
 }
-func copyTree(src, dst string) error {
-	return filepath.WalkDir(src, func(p string, d os.DirEntry, e error) error {
+func copyTree(src, dst string, baseline ...map[string]string) error {
+	allowed := map[string]string{}
+	if len(baseline) > 0 {
+		allowed = baseline[0]
+	}
+	links := map[string]string{}
+	err := filepath.WalkDir(src, func(p string, d os.DirEntry, e error) error {
 		if e != nil {
 			return e
 		}
@@ -408,7 +447,17 @@ func copyTree(src, dst string) error {
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink publication requires human preparation: %s", rel)
+			name := filepath.ToSlash(rel)
+			target, e := os.Readlink(p)
+			if e != nil {
+				return e
+			}
+			target = filepath.ToSlash(target)
+			if original, ok := allowed[name]; !ok || target != original {
+				return fmt.Errorf("new or modified symlink requires human preparation: %s", name)
+			}
+			links[name] = target
+			return nil
 		}
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {
@@ -437,4 +486,8 @@ func copyTree(src, dst string) error {
 		}
 		return ce
 	})
+	if err != nil {
+		return err
+	}
+	return createLinks(dst, links)
 }
