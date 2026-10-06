@@ -1,0 +1,9 @@
+.git
+.env
+config.json
+config.native.json
+state-native
+state
+secrets
+bin
+*.exe

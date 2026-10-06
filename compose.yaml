@@ -1,0 +1,30 @@
+name: codex-orchestrator
+services:
+  proxy:
+    image: codex-broker:0.1
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+    command: ["proxy"]
+    restart: unless-stopped
+    read_only: true
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
+    networks:
+      agents:
+        aliases: [proxy]
+        ipv4_address: 172.30.250.2
+      control: {}
+networks:
+  agents:
+    name: codex-agents
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.250.0/24
+  control:
+    name: codex-control

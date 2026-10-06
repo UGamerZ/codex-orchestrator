@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": {"type":"string","enum":["completed","question","blocked","passed","changes"]},
+    "question": {"type":"string"},
+    "summary": {"type":"string"},
+    "findings": {"type":"array","items":{"type":"string"}},
+    "selected": {"type":"array","items":{"type":"string"}}
+  },
+  "required": ["status","question","summary","findings","selected"]
+}
