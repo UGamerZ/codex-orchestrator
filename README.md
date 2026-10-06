@@ -1,6 +1,6 @@
 # Codex Orchestrator
 
-**English (default)** | [Русский](docs/ru/README.md)
+**English** | [Русский](docs/ru/README.md)
 
 A general-purpose, isolated environment for handling Trello tasks with Codex CLI.
 Use local projects with local branches and reviews, or GitHub repositories with pull
