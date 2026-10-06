@@ -119,7 +119,14 @@ func (c *Controller) poll(ctx context.Context) error {
 		}
 	}
 	for _, j := range c.State.Jobs {
-		if j.PR > 0 && j.Card != "" && !j.DoneMoved {
+		if j.Card != "" && j.DoneMoved && !reviewComplete(j) && !j.ClosedPR {
+			if e := c.API.Move(ctx, j.Card, c.C.Progress); e != nil {
+				log.Printf("Trello return to In Progress: %v", e)
+			} else {
+				j.DoneMoved = false
+			}
+		}
+		if reviewComplete(j) && j.Card != "" && !j.DoneMoved {
 			if e := c.API.Move(ctx, j.Card, c.C.Done); e != nil {
 				log.Printf("Trello Done: %v", e)
 			} else {
@@ -155,6 +162,9 @@ func (c *Controller) poll(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+func reviewComplete(j *Job) bool {
+	return j.PR > 0 && j.Head != "" && j.Stage == "passed" && j.ReviewedHead == j.Head && !j.ClosedPR
 }
 func (c *Controller) answers(ctx context.Context) error {
 	updates, e := c.API.Updates(ctx, c.State.TelegramOffset)

@@ -33,7 +33,8 @@ The controller repeats these access checks before agents start.
 
 The wizard does not clone an existing repository. The trusted broker fetches the
 project when tasks run. Commits go only to `codex/...` branches, and PRs target the
-selected base branch. **Done** means a PR has been created. Reviewers publish comments,
+selected base branch. Creating a PR keeps the task **In Progress**. **Done** requires
+a successful internal review of its current commit. Reviewers publish comments,
 not GitHub Approve or merge.
 
 ## New local project
@@ -61,8 +62,9 @@ container. Results return to the bare store as local branches. Both isolation
 backends support this workflow. Reviews are saved under `state_dir/reviews`: JSON
 task descriptions and Markdown findings for the specific commit SHA.
 
-In local mode, **Done** means the task branch has been saved and queued for local
-review. Telegram sends completion notifications only after review finds no issues.
+In local mode, saving a task branch also keeps it **In Progress**. The task moves to
+**Done** and receives a Telegram completion notification only after review of its
+current commit finds no issues.
 
 Inspect and accept a result manually from the local project directory:
 

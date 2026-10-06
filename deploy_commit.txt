@@ -1,1 +1,1 @@
-Improve agent autonomy, retain clarification history and preserve safe project links
+Fix native review access and require successful review before Trello Done

@@ -28,7 +28,7 @@ func (r *Runner) nativePaths(id string) (broker.Paths, error) {
 			return broker.Paths{}, fmt.Errorf("native root cannot contain a reparse point")
 		}
 	}
-	p := broker.Paths{Workspace: filepath.Join(base, "workspace"), Publish: filepath.Join(base, "private", "publish"), Review: filepath.Join(base, "review-input")}
+	p := broker.Paths{Workspace: filepath.Join(base, "workspace"), Publish: filepath.Join(base, "private", "publish"), Review: filepath.Join(base, "workspace", broker.ReviewDirectory)}
 	for _, v := range []string{p.Workspace, p.Publish, p.Review} {
 		rel, e := filepath.Rel(root, v)
 		if e != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -91,7 +91,7 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 		fs[c.LocalRepository] = "deny"
 	}
 	if role == "reviewer" {
-		fs[filepath.Join(filepath.Dir(workspace), "review-input")] = "read"
+		fs[filepath.Join(workspace, broker.ReviewDirectory)] = "read"
 	}
 	if runtime.GOOS == "windows" {
 		for drive := 'C'; drive <= 'Z'; drive++ {
@@ -145,6 +145,12 @@ func nativeEnvironment(home string) []string {
 	scratch := filepath.Join(home, "scratch")
 	return append(env, "CODEX_HOME="+home, "TEMP="+scratch, "TMP="+scratch)
 }
+func nativePrompt(prompt, workspace, review string) string {
+	prompt = strings.ReplaceAll(prompt, "/workspace", workspace)
+	prompt = strings.ReplaceAll(prompt, "/review-input", review)
+	return "Native Windows command rules: PowerShell may start in C:\\ even when the tool workdir field is set. Do not rely on relative paths or Set-Location: protected parent directories may prevent changing the shell location. Use explicit ABSOLUTE paths for every project read or modification. For Git use git -C with the absolute project directory; for searches pass the absolute project path to rg. Read supplied files with Get-Content -LiteralPath <absolute-path> -Raw, or [IO.File]::ReadAllText(<absolute-path>). If a relative-path lookup fails, retry the provided absolute path before declaring a resource missing or asking a question. Project directory: " + workspace + ". Trusted review files, when reviewing: " + filepath.Join(review, "diff.patch") + " and " + filepath.Join(review, "description.txt") + ". Use these CURRENT paths even if an earlier turn referenced a different folder.\n\n" + prompt
+}
+func psQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
 func prepareNativeAuth(source, home string) error {
 	b, e := os.ReadFile(source)
 	if e != nil {

@@ -20,8 +20,7 @@ Configure integrations and verify isolation before starting task processing.
 4. Each executor works in a new `codex/<card-id>` branch.
 5. The trusted Git broker commits the changes and publishes only the task branch.
    GitHub mode creates a PR targeting the configured base branch; local mode saves a
-   local branch and creates a local review record. The card moves to **Done**.
-   People archive cards manually.
+   local branch and creates a local review record. The card stays **In Progress**.
 6. A reviewer checks the exact commit SHA using a read-only working copy. Findings
    become PR comments or local review files. **Reviewers cannot submit GitHub Approve
    or merge:** the controller exposes neither operation, and agents have no GitHub credentials.
@@ -30,6 +29,8 @@ Configure integrations and verify isolation before starting task processing.
    required to authorize another round.
 8. Telegram sends completion notifications only after the internal reviewer finds
    no issues. Clarification questions and requests for missing resources are sent immediately.
+   Only a successful review of the current commit moves the card to **Done**.
+   A new unreviewed revision returns it to **In Progress**. People archive cards manually.
 
 Default models are `gpt-6.1-sol / low` for executors, `gpt-6-sol / medium` as the
 fallback, and `gpt-6-luna / low` for managers and reviewers. These defaults are

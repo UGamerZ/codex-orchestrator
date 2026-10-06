@@ -26,6 +26,9 @@ An executor can change only its working copy and scratch files. A reviewer reads
 the working copy and review materials. GitHub credentials and publication remain
 with the trusted controller. Approve and merge are not exposed in either backend.
 Global user settings, plugins, and additional agents are not loaded into tasks.
+Native review inputs are refreshed by the trusted broker under the read-only working
+copy's `.orchestrator-review` directory. They are excluded from Git publication.
+Isolation probes verify both reading these inputs and refusing reviewer writes.
 
 Setup installs persistent IPv4/IPv6 WFP filters for the SID of `CodexSandboxOffline`,
 blocking Internet, LAN, and localhost connections. The rules affect every process

@@ -7,8 +7,9 @@
   <li><strong>Project selection.</strong> Connect an existing GitHub repository using an account with access, or create a new local project. Local development includes separate branches and reviews without GitHub. New projects can optionally be published to a private repository.</li>
   <li><strong>Task queue.</strong> The manager checks a dedicated board once an hour. Up to two executors can work at the same time.</li>
   <li><strong>Check tasks on demand.</strong> Send /check to the Telegram bot to request a board check without waiting for the schedule. The hourly schedule and executor limits stay in effect.</li>
-  <li><strong>Changes ready for review.</strong> Each task runs separately and produces a pull request or a local branch for review. The card moves to Done and stays there until someone archives it manually.</li>
+  <li><strong>Changes ready for review.</strong> Each task produces a pull request or local branch and stays In Progress until its current changes pass review. Only then does it move to Done. People archive cards manually.</li>
   <li><strong>Review and fixes.</strong> The reviewer sends findings back to the executor for automatic fixes. Final approval and merging remain with a person.</li>
+  <li><strong>Available review materials.</strong> Native reviewers can read the supplied changes and task details within their restricted working copy. These materials are kept out of published project changes.</li>
   <li><strong>Telegram questions.</strong> If an agent lacks clear requirements, data, or access, it pauses and asks a question. A reply returns to the agent that asked it.</li>
   <li><strong>More autonomous work.</strong> Agents handle routine implementation decisions themselves and ask only about genuine blockers. A task can be fully described in its card title without a separate description.</li>
   <li><strong>Answers stay with the task.</strong> Clarification history is retained during follow-up work. Repeated answered questions are retried with the saved context, and setup errors are clearly distinguished from agent questions.</li>

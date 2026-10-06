@@ -107,8 +107,7 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x4 | 0x08000000} // Suspend before assigning the job; no child can escape resource limits.
 	cmd.Dir = p.Workspace
 	cmd.Env = r.nativeEnv(home)
-	prompt = strings.ReplaceAll(prompt, "/workspace", p.Workspace)
-	prompt = strings.ReplaceAll(prompt, "/review-input", p.Review)
+	prompt = nativePrompt(prompt, p.Workspace, p.Review)
 	cmd.Stdin = strings.NewReader(prompt)
 	var stdout, stderr boundedOutput
 	cmd.Stdout = &stdout
@@ -171,8 +170,6 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 	return result
 }
 
-func psQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
-
 // VerifyNativeIsolation executes test-owned probes, without a model, project or integrations.
 // A weaker restricted-token fallback fails the offline-user identity check.
 func VerifyNativeIsolation(ctx context.Context, c Config) error {
@@ -187,7 +184,7 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		return e
 	}
 	home := filepath.Join(filepath.Dir(p.Publish), "probe-runtime")
-	for _, dir := range []string{p.Workspace, filepath.Join(home, "scratch"), r.nativeRuntime()} {
+	for _, dir := range []string{p.Workspace, p.Review, filepath.Join(home, "scratch"), r.nativeRuntime()} {
 		if e = os.MkdirAll(dir, 0700); e != nil {
 			return e
 		}
@@ -209,11 +206,15 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		return string(b), nil
 	}
 	marker := filepath.Join(p.Workspace, "probe.txt")
+	reviewMarker := filepath.Join(p.Review, "diff.patch")
+	if e = os.WriteFile(reviewMarker, []byte("trusted-review-probe"), 0644); e != nil {
+		return e
+	}
 	common := "$ErrorActionPreference='Stop'; $actor=[Security.Principal.WindowsIdentity]::GetCurrent().Name; if ($actor -notmatch 'CodexSandboxOffline') { throw 'Dedicated offline sandbox user required' };"
 	if _, e = run("executor", common+"[IO.File]::WriteAllText("+psQuote(marker)+",'probe'); if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Workspace access failed' }; $blocked=$false; try { [IO.File]::ReadAllText("+psQuote(outside)+") | Out-Null } catch { $blocked=$true }; if (!$blocked) { throw 'Outside read allowed' }; 'executor-ok'"); e != nil {
 		return e
 	}
-	if _, e = run("reviewer", common+"if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Review read failed' }; $blocked=$false; try { [IO.File]::WriteAllText("+psQuote(marker)+",'changed') } catch { $blocked=$true }; if (!$blocked) { throw 'Reviewer can write' }; 'reviewer-ok'"); e != nil {
+	if _, e = run("reviewer", common+"if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Review read failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Review absolute-path read failed' }; if ([IO.File]::ReadAllText("+psQuote(reviewMarker)+") -ne 'trusted-review-probe') { throw 'Review material read failed' }; foreach ($target in @("+psQuote(marker)+","+psQuote(reviewMarker)+")) { $blocked=$false; try { [IO.File]::WriteAllText($target,'changed') } catch { $blocked=$true }; if (!$blocked) { throw 'Reviewer can write' } }; 'reviewer-ok'"); e != nil {
 		return e
 	}
 	if _, e = run("executor", common+"$client=New-Object Net.Sockets.TcpClient; $attempt=$client.BeginConnect('1.1.1.1',443,$null,$null); if ($attempt.AsyncWaitHandle.WaitOne(4000)) { try { $client.EndConnect($attempt) } catch {} }; if ($client.Connected) { throw 'Offline user reached internet' }; $client.Close(); 'network-ok'"); e != nil {

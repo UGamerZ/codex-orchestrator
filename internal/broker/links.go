@@ -45,6 +45,9 @@ func archiveLinks(data []byte) (map[string]string, error) {
 			return nil, fmt.Errorf("unsafe archive path: %s", h.Name)
 		}
 		name := path.Clean(h.Name)
+		if strings.EqualFold(strings.Split(name, "/")[0], ReviewDirectory) {
+			return nil, fmt.Errorf("project tracks reserved review metadata path")
+		}
 		names = append(names, name)
 		if h.Typeflag == tar.TypeSymlink {
 			if _, exists := links[name]; exists {

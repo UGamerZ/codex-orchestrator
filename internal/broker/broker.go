@@ -40,6 +40,8 @@ type Result struct {
 }
 type Paths struct{ Workspace, Publish, Review string }
 
+const ReviewDirectory = ".orchestrator-review"
+
 func Execute(ctx context.Context, r Request, p Paths) (Result, error) {
 	var out Result
 	var b bytes.Buffer
@@ -165,10 +167,10 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		if e = os.MkdirAll(p.Review, 0755); e != nil {
 			return e
 		}
-		if e = os.WriteFile(filepath.Join(p.Review, "diff.patch"), b, 0644); e != nil {
+		if e = writeReviewFile(p.Review, "diff.patch", b); e != nil {
 			return e
 		}
-		if e = os.WriteFile(filepath.Join(p.Review, "description.txt"), []byte(r.Message), 0644); e != nil {
+		if e = writeReviewFile(p.Review, "description.txt", []byte(r.Message)); e != nil {
 			return e
 		}
 		return json.NewEncoder(output).Encode(Result{SHA: r.SHA})
@@ -438,6 +440,12 @@ func copyTree(src, dst string, baseline ...map[string]string) error {
 			return e
 		}
 		if rel == "." {
+			return nil
+		}
+		if strings.EqualFold(filepath.ToSlash(rel), ReviewDirectory) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
