@@ -2,6 +2,7 @@ param([switch]$Check,[string]$Config='config.json')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projectRoot
+if (!(Test-Path -LiteralPath $Config)) { & (Join-Path $PSScriptRoot 'Configure-Project.ps1') -Config $Config }
 # The local secrets file stays on the host and is never mounted into agents.
 $secretsPath = Join-Path $projectRoot 'secrets\integrations.json'
 $integrationSecrets = Get-Content -LiteralPath $secretsPath -Raw | ConvertFrom-Json

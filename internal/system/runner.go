@@ -3,6 +3,7 @@ package system
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -70,8 +71,15 @@ func (b *boundedOutput) String() string { return string(b.Tail) }
 
 var safeID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
-func volume(id, kind string) string    { return "codex-" + id + "-" + kind }
-func container(id, role string) string { return "codex-run-" + id + "-" + role }
+func (r *Runner) namespace() string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(r.C.StateDir+"\n"+r.C.Repository+"\n"+r.C.LocalRepository)))[:12]
+}
+func (r *Runner) volume(id, kind string) string {
+	return "codex-" + r.namespace() + "-" + id + "-" + kind
+}
+func (r *Runner) container(id, role string) string {
+	return "codex-run-" + r.namespace() + "-" + id + "-" + role
+}
 func (r *Runner) dockerCommand(ctx context.Context, args ...string) *exec.Cmd {
 	if r.C.DockerDistro != "" {
 		return exec.CommandContext(ctx, "wsl.exe", append([]string{"--distribution", r.C.DockerDistro, "--user", "root", "--exec", "docker"}, args...)...)
@@ -125,13 +133,18 @@ func (r *Runner) Broker(ctx context.Context, j *Job, operation string) (broker.R
 	defer func() {
 		stopCtx, stop := context.WithTimeout(context.Background(), 15*time.Second)
 		defer stop()
-		r.docker(stopCtx, nil, "rm", "-f", container(j.ID, "broker"))
+		r.docker(stopCtx, nil, "rm", "-f", r.container(j.ID, "broker"))
 	}()
-	token, e := exec.CommandContext(ctx, r.C.GHPath, "auth", "token", "--hostname", "github.com", "--user", r.C.GithubUser).Output()
+	var token []byte
+	var e error
+	if r.C.ProjectMode != "local" {
+		token, e = accountToken(ctx, r.C)
+	}
 	if e != nil {
 		return out, fmt.Errorf("GitHub credential unavailable")
 	}
 	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: clip(j.Title, 200)}
+	req.ExpectedHead = j.Head
 	if operation == "review" || (operation == "prepare" && j.External) {
 		req.PR = j.PR
 	}
@@ -142,20 +155,26 @@ func (r *Runner) Broker(ctx context.Context, j *Job, operation string) (broker.R
 		req.SHA = j.Head
 		req.Message = j.Title + "\n" + j.Description
 	}
+	if e = r.localRequest(ctx, &req); e != nil {
+		return out, e
+	}
 	input, e := json.Marshal(req)
 	if e != nil {
 		return out, e
 	}
-	mount := "type=volume,src=" + volume(j.ID, "workspace") + ",dst=/workspace"
+	mount := "type=volume,src=" + r.volume(j.ID, "workspace") + ",dst=/workspace"
 	if operation != "prepare" {
 		mount += ",readonly"
 	}
-	args := []string{"run", "--rm", "-i", "--name", container(j.ID, "broker"), "--label", "codex-orchestrator=true", "--network", "codex-control", "--read-only", "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=DAC_OVERRIDE", "--security-opt=no-new-privileges:true", "--pids-limit=128", "--memory=1g", "--cpus=1", "--tmpfs", "/tmp:rw,noexec,nosuid,size=128m", "--mount", mount, "--mount", "type=volume,src=" + volume(j.ID, "publish") + ",dst=/publish", "--mount", "type=volume,src=" + volume(j.ID, "review") + ",dst=/review-input", "codex-broker:0.1", "broker"}
+	args := []string{"run", "--rm", "-i", "--name", r.container(j.ID, "broker"), "--label", "codex-orchestrator=" + r.namespace(), "--network", "codex-control", "--read-only", "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=DAC_OVERRIDE", "--security-opt=no-new-privileges:true", "--pids-limit=128", "--memory=1g", "--cpus=1", "--tmpfs", "/tmp:rw,noexec,nosuid,size=128m", "--mount", mount, "--mount", "type=volume,src=" + r.volume(j.ID, "publish") + ",dst=/publish", "--mount", "type=volume,src=" + r.volume(j.ID, "review") + ",dst=/review-input", "codex-broker:0.1", "broker"}
 	b, e := r.docker(ctx, input, args...)
 	if e != nil {
 		return out, e
 	}
 	e = json.Unmarshal(b, &out)
+	if e == nil {
+		e = r.acceptLocal(ctx, j, operation, &out)
+	}
 	return out, e
 }
 func (r *Runner) initialize(ctx context.Context, id, role string) error {
@@ -182,7 +201,7 @@ func (r *Runner) initialize(ctx context.Context, id, role string) error {
 	if e != nil {
 		return e
 	}
-	_, e = r.docker(ctx, b, "run", "--rm", "-i", "--label", "codex-orchestrator=true", "--network", "none", "--read-only", "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=DAC_OVERRIDE", "--security-opt=no-new-privileges:true", "--mount", "type=volume,src="+volume(id, role+"-home")+",dst=/home/codex", "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m", r.C.Image, "init-auth")
+	_, e = r.docker(ctx, b, "run", "--rm", "-i", "--label", "codex-orchestrator="+r.namespace(), "--network", "none", "--read-only", "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=DAC_OVERRIDE", "--security-opt=no-new-privileges:true", "--mount", "type=volume,src="+r.volume(id, role+"-home")+",dst=/home/codex", "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m", r.C.Image, "init-auth")
 	return e
 }
 func (r *Runner) Run(j Job, role, prompt string) RunResult {
@@ -198,7 +217,7 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 	}
 	// Named volumes are created by Docker. All project files stay inside the Docker VM.
 	for _, kind := range []string{"workspace", role + "-home"} {
-		if _, e := r.docker(ctx, nil, "volume", "create", "--label", "codex-orchestrator=true", volume(j.ID, kind)); e != nil {
+		if _, e := r.docker(ctx, nil, "volume", "create", "--label", "codex-orchestrator="+r.namespace(), r.volume(j.ID, kind)); e != nil {
 			result.Err = e
 			return result
 		}
@@ -231,7 +250,7 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 	if role == "executor" && j.Fallback {
 		model, effort = r.C.FallbackModel, r.C.FallbackEffort
 	}
-	name := container(j.ID, role)
+	name := r.container(j.ID, role)
 	if e := r.networkPolicy(ctx); e != nil {
 		result.Err = e
 		return result
@@ -241,14 +260,14 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 		defer stop()
 		r.docker(stopCtx, nil, "rm", "-f", name)
 	}()
-	mount := "type=volume,src=" + volume(j.ID, "workspace") + ",dst=/workspace"
+	mount := "type=volume,src=" + r.volume(j.ID, "workspace") + ",dst=/workspace"
 	if role != "executor" {
 		mount += ",readonly"
 	}
-	args := []string{"run", "--rm", "-i", "--name", name, "--label", "codex-orchestrator=true", "--network", r.C.Network, "--dns", "127.0.0.1", "--add-host", "proxy:172.30.250.2", "--read-only", "--user", "1000:1000", "--cap-drop=ALL", "--security-opt=no-new-privileges:true", "--pids-limit=256", "--memory=2g", "--cpus=2", "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m", "--mount", mount, "--mount", "type=volume,src=" + volume(j.ID, role+"-home") + ",dst=/home/codex", "-e", "HTTPS_PROXY=" + r.C.Proxy, "-e", "HTTP_PROXY=" + r.C.Proxy, "-e", "ALL_PROXY=" + r.C.Proxy, "-e", "NO_PROXY=", "-e", "CODEX_HOME=/home/codex/.codex", r.C.Image, "run", model, effort, j.Session}
+	args := []string{"run", "--rm", "-i", "--name", name, "--label", "codex-orchestrator=" + r.namespace(), "--network", r.C.Network, "--dns", "127.0.0.1", "--add-host", "proxy:172.30.250.2", "--read-only", "--user", "1000:1000", "--cap-drop=ALL", "--security-opt=no-new-privileges:true", "--pids-limit=256", "--memory=2g", "--cpus=2", "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m", "--mount", mount, "--mount", "type=volume,src=" + r.volume(j.ID, role+"-home") + ",dst=/home/codex", "-e", "HTTPS_PROXY=" + r.C.Proxy, "-e", "HTTP_PROXY=" + r.C.Proxy, "-e", "ALL_PROXY=" + r.C.Proxy, "-e", "NO_PROXY=", "-e", "CODEX_HOME=/home/codex/.codex", r.C.Image, "run", model, effort, j.Session}
 	if role == "reviewer" {
 		idx := len(args) - 5
-		extra := []string{"--mount", "type=volume,src=" + volume(j.ID, "review") + ",dst=/review-input,readonly"}
+		extra := []string{"--mount", "type=volume,src=" + r.volume(j.ID, "review") + ",dst=/review-input,readonly"}
 		args = append(args[:idx], append(extra, args[idx:]...)...)
 	}
 	// The image writes its final response to stdout behind a fixed marker; JSONL preserves
@@ -347,7 +366,7 @@ func (r *Runner) StopAbandoned(ctx context.Context) error {
 	if r.C.Backend == "native-windows" {
 		return nil
 	} // Windows job objects kill the complete process tree on controller exit.
-	b, e := r.docker(ctx, nil, "ps", "-aq", "--filter", "label=codex-orchestrator=true")
+	b, e := r.docker(ctx, nil, "ps", "-aq", "--filter", "label=codex-orchestrator="+r.namespace())
 	if e != nil {
 		return e
 	}

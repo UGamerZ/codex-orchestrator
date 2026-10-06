@@ -50,11 +50,15 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 			return broker.Result{}, e
 		}
 	}
-	token, e := exec.CommandContext(ctx, r.C.GHPath, "auth", "token", "--hostname", "github.com", "--user", r.C.GithubUser).Output()
+	var token []byte
+	if r.C.ProjectMode != "local" {
+		token, e = accountToken(ctx, r.C)
+	}
 	if e != nil {
 		return broker.Result{}, fmt.Errorf("GitHub credential unavailable")
 	}
 	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: clip(j.Title, 200)}
+	req.ExpectedHead = j.Head
 	if operation == "prepare" && j.External {
 		req.SHA = j.Head
 		req.PR = j.PR
@@ -64,7 +68,14 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 		req.PR = j.PR
 		req.Message = j.Title + "\n" + j.Description
 	}
-	return broker.Execute(ctx, req, p)
+	if e = r.localRequest(ctx, &req); e != nil {
+		return broker.Result{}, e
+	}
+	result, e := broker.Execute(ctx, req, p)
+	if e == nil {
+		e = r.acceptLocal(ctx, j, operation, &result)
+	}
+	return result, e
 }
 
 // This Codex Windows implementation requires root read as a baseline. Deny known
@@ -76,6 +87,9 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 		access = "write"
 	}
 	fs := map[string]string{":root": "read", c.NativeRoot: "deny", c.StateDir: "deny", c.AuthFile: "deny", home: "deny", workspace: access, filepath.Join(home, "scratch"): "write", filepath.Dir(c.CodexPath): "read"}
+	if c.LocalRepository != "" {
+		fs[c.LocalRepository] = "deny"
+	}
 	if role == "reviewer" {
 		fs[filepath.Join(filepath.Dir(workspace), "review-input")] = "read"
 	}

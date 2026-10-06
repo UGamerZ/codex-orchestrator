@@ -22,11 +22,16 @@ type API struct {
 }
 
 func NewAPI(c Config) *API { return &API{C: c, Client: &http.Client{Timeout: 35 * time.Second}} }
+func accountToken(ctx context.Context, c Config) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, c.GHPath, "auth", "token", "--hostname", "github.com", "--user", c.GithubUser)
+	cmd.Env = withoutEnv(os.Environ(), "GH_TOKEN", "GITHUB_TOKEN", "GH_HOST")
+	return cmd.Output()
+}
 func (a *API) gh(ctx context.Context, args ...string) ([]byte, error) {
 	if a.ghTransport != nil {
 		return a.ghTransport(ctx, args...)
 	}
-	t, e := exec.CommandContext(ctx, a.C.GHPath, "auth", "token", "--hostname", "github.com", "--user", a.C.GithubUser).Output()
+	t, e := accountToken(ctx, a.C)
 	if e != nil {
 		return nil, fmt.Errorf("GitHub account %s authentication unavailable", a.C.GithubUser)
 	}
@@ -74,6 +79,9 @@ type Pull struct {
 }
 
 func (a *API) Pulls(ctx context.Context) ([]Pull, error) {
+	if a.C.ProjectMode == "local" {
+		return a.localReviews(ctx)
+	}
 	p := "repos/" + a.C.Repository + "/pulls?state=open&base=" + url.QueryEscape(a.C.BaseBranch) + "&per_page=100"
 	b, e := a.gh(ctx, "api", "--paginate", "--slurp", p)
 	if e != nil {
@@ -90,6 +98,9 @@ func (a *API) Pulls(ctx context.Context) ([]Pull, error) {
 	return out, nil
 }
 func (a *API) CreatePR(ctx context.Context, j *Job) (int, string, error) {
+	if a.C.ProjectMode == "local" {
+		return a.createLocalReview(ctx, j)
+	}
 	// Recover a PR created immediately before a crash; never create duplicates.
 	b, e := a.gh(ctx, "api", "repos/"+a.C.Repository+"/pulls?state=all&head="+url.QueryEscape(strings.Split(a.C.Repository, "/")[0]+":"+j.Branch)+"&base="+url.QueryEscape(a.C.BaseBranch))
 	if e != nil {
@@ -112,6 +123,9 @@ func (a *API) CreatePR(ctx context.Context, j *Job) (int, string, error) {
 	return p.Number, p.URL, e
 }
 func (a *API) Comment(ctx context.Context, pr int, body string) error {
+	if a.C.ProjectMode == "local" {
+		return a.localComment(pr, body)
+	}
 	// The sole reviewer publication capability is an issue comment.
 	// No arbitrary endpoint or event can be supplied by an agent.
 	_, e := a.gh(ctx, "api", "--method", "POST", fmt.Sprintf("repos/%s/issues/%d/comments", a.C.Repository, pr), "-f", "body="+body)
@@ -231,13 +245,10 @@ func clip(s string, n int) string {
 	return s
 }
 func (a *API) Validate(ctx context.Context) error {
-	b, e := a.gh(ctx, "api", "repos/"+a.C.Repository+"/branches/"+url.PathEscape(a.C.BaseBranch))
-	if e != nil {
+	if e := a.ValidateProject(ctx); e != nil {
 		return e
 	}
-	if len(b) == 0 {
-		return fmt.Errorf("empty branch")
-	}
+	var e error
 	var lists []struct {
 		ID string `json:"id"`
 	}

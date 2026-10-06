@@ -21,16 +21,20 @@ import (
 )
 
 type Request struct {
-	Operation  string
-	Repository string
-	Base       string
-	SHA        string
-	Branch     string
-	Token      string
-	Message    string
-	PR         int
+	ExpectedHead string
+	Local        bool
+	Bundle       []byte
+	Operation    string
+	Repository   string
+	Base         string
+	SHA          string
+	Branch       string
+	Token        string
+	Message      string
+	PR           int
 }
 type Result struct {
+	Bundle  []byte `json:"bundle,omitempty"`
 	SHA     string `json:"sha"`
 	Changed bool   `json:"changed"`
 }
@@ -49,7 +53,7 @@ func Execute(ctx context.Context, r Request, p Paths) (Result, error) {
 
 func Run() error {
 	var r Request
-	if e := json.NewDecoder(io.LimitReader(os.Stdin, 2<<20)).Decode(&r); e != nil {
+	if e := json.NewDecoder(io.LimitReader(os.Stdin, 192<<20)).Decode(&r); e != nil {
 		return e
 	}
 	return execute(context.Background(), r, Paths{"/workspace", "/publish", "/review-input"}, os.Stdout)
@@ -72,7 +76,7 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	if r.Branch == r.Base || r.PR < 0 {
 		return fmt.Errorf("base branch publication forbidden")
 	}
-	if !regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`).MatchString(r.Repository) {
+	if !r.Local && !regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`).MatchString(r.Repository) {
 		return fmt.Errorf("invalid repository")
 	}
 	if !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(r.SHA) && r.SHA != "" {
@@ -85,7 +89,11 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	defer cancel()
 	// Credential and hook settings override all repository configuration.
 	git := func(dir string, args ...string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + filepath.Join(p.Publish, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "credential.helper=", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never"}, args...)...)
+		filePolicy := "never"
+		if r.Local {
+			filePolicy = "always"
+		}
+		cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + filepath.Join(p.Publish, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "credential.helper=", "-c", "protocol.file.allow=" + filePolicy, "-c", "protocol.ext.allow=never"}, args...)...)
 		cmd.Dir = dir
 		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "SystemRoot=" + os.Getenv("SystemRoot"), "HOME=" + p.Publish, "TEMP=" + filepath.Join(p.Publish, "tmp"), "TMP=" + filepath.Join(p.Publish, "tmp"), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+r.Token))}
 		b, e := cmd.Output()
@@ -97,15 +105,31 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	if e := os.MkdirAll(p.Publish, 0700); e != nil {
 		return e
 	}
+	if r.Local {
+		if len(r.Bundle) == 0 || len(r.Bundle) > 128<<20 {
+			return fmt.Errorf("local project bundle missing or too large")
+		}
+		if e := os.WriteFile(filepath.Join(p.Publish, "source.bundle"), r.Bundle, 0600); e != nil {
+			return e
+		}
+	}
 	if _, e := os.Stat(filepath.Join(p.Publish, "repo", ".git")); os.IsNotExist(e) {
-		if _, e = git(p.Publish, "clone", "--no-checkout", "--no-tags", "--single-branch", "--branch", r.Base, "https://github.com/"+r.Repository+".git", "repo"); e != nil {
+		source := "https://github.com/" + r.Repository + ".git"
+		if r.Local {
+			source = filepath.Join(p.Publish, "source.bundle")
+		}
+		if _, e = git(p.Publish, "clone", "--no-checkout", "--no-tags", "--single-branch", "--branch", r.Base, source, "repo"); e != nil {
 			return e
 		}
 	}
 	dir := filepath.Join(p.Publish, "repo")
 	fetchHead := func() error {
+		if r.Local {
+			_, e := git(dir, "cat-file", "-e", r.SHA+"^{commit}")
+			return e
+		}
 		ref := r.SHA
-		if r.PR > 0 {
+		if r.PR > 0 && !r.Local {
 			ref = fmt.Sprintf("refs/pull/%d/head", r.PR)
 		}
 		if _, e := git(dir, "fetch", "--no-tags", "origin", ref); e != nil {
@@ -120,7 +144,11 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		}
 		return nil
 	}
-	if _, e := git(dir, "fetch", "--no-tags", "origin", r.Base); e != nil {
+	refspec := r.Base
+	if r.Local {
+		refspec = "+refs/heads/*:refs/remotes/origin/*"
+	}
+	if _, e := git(dir, "fetch", "--no-tags", "origin", refspec); e != nil {
 		return e
 	}
 	if r.Operation == "review" {
@@ -213,10 +241,18 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	if r.SHA == "" {
 		return fmt.Errorf("baseline SHA required")
 	}
-	if _, e := git(dir, "fetch", "--no-tags", "origin", r.SHA); e != nil {
-		return e
+	if !r.Local {
+		if _, e := git(dir, "fetch", "--no-tags", "origin", r.SHA); e != nil {
+			return e
+		}
 	}
 	prior, _ := os.ReadFile(filepath.Join(p.Publish, "last-head"))
+	if r.Local {
+		prior, _ = git(dir, "rev-parse", "--verify", "refs/remotes/origin/"+r.Branch)
+		if strings.TrimSpace(string(prior)) != r.ExpectedHead {
+			return fmt.Errorf("local branch changed outside system")
+		}
+	}
 	parent := r.SHA
 	if len(prior) > 0 {
 		parent = strings.TrimSpace(string(prior))
@@ -262,7 +298,16 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		return e
 	}
 	// Only this exact task branch can be written. A fast-forward push preserves human updates.
-	remote, e := git(dir, "ls-remote", "origin", "refs/heads/"+r.Branch)
+	var remote []byte
+	if r.Local {
+		remote, e = git(dir, "rev-parse", "--verify", "refs/remotes/origin/"+r.Branch)
+		if e != nil {
+			remote = nil
+			e = nil
+		}
+	} else {
+		remote, e = git(dir, "ls-remote", "origin", "refs/heads/"+r.Branch)
+	}
 	if e != nil {
 		return e
 	}
@@ -274,8 +319,10 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	if old != "" && old != strings.TrimSpace(string(prior)) {
 		return fmt.Errorf("branch changed outside system; human confirmation required")
 	}
-	if _, e = git(dir, "push", "origin", "HEAD:refs/heads/"+r.Branch); e != nil {
-		return e
+	if !r.Local {
+		if _, e = git(dir, "push", "origin", "HEAD:refs/heads/"+r.Branch); e != nil {
+			return e
+		}
 	}
 	b, e = git(dir, "rev-parse", "HEAD")
 	if e != nil {
@@ -285,7 +332,18 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	if e = os.WriteFile(filepath.Join(p.Publish, "last-head"), []byte(sha), 0600); e != nil {
 		return e
 	}
-	return json.NewEncoder(output).Encode(Result{SHA: sha, Changed: true})
+	result := Result{SHA: sha, Changed: true}
+	if r.Local {
+		bundlePath := filepath.Join(p.Publish, "result.bundle")
+		if _, e = git(dir, "bundle", "create", bundlePath, r.Branch); e != nil {
+			return e
+		}
+		result.Bundle, e = os.ReadFile(bundlePath)
+		if e != nil {
+			return e
+		}
+	}
+	return json.NewEncoder(output).Encode(result)
 }
 func extract(b []byte, root string) error {
 	tr := tar.NewReader(strings.NewReader(string(b)))
@@ -303,6 +361,9 @@ func extract(b []byte, root string) error {
 		}
 		dest := filepath.Join(root, filepath.FromSlash(p))
 		switch h.Typeflag {
+		case tar.TypeXGlobalHeader:
+			// Git archive emits its commit ID as global PAX metadata.
+			continue
 		case tar.TypeDir:
 			if e = os.MkdirAll(dest, 0755); e != nil {
 				return e

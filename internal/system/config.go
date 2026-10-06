@@ -6,9 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 type Config struct {
+	ProjectMode     string `json:"project_mode"`
+	LocalRepository string `json:"local_repository,omitempty"`
 	Backend         string `json:"backend"`
 	NativeRoot      string `json:"native_root"`
 	CodexPath       string `json:"codex_path"`
@@ -72,11 +75,28 @@ func LoadConfig(path string) (Config, error) {
 			return c, fmt.Errorf("native isolation must pass Check-NativeIsolation.ps1 before enabling service")
 		}
 	}
-	if !regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`).MatchString(c.Repository) {
+	if c.ProjectMode == "" {
+		c.ProjectMode = "github"
+	}
+	if c.ProjectMode != "github" && c.ProjectMode != "local" {
+		return c, fmt.Errorf("project_mode must be github or local")
+	}
+	if c.ProjectMode == "local" {
+		if c.LocalRepository == "" {
+			return c, fmt.Errorf("local_repository required")
+		}
+		c.LocalRepository, e = filepath.Abs(c.LocalRepository)
+		if e != nil {
+			return c, e
+		}
+	} else if !regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`).MatchString(c.Repository) {
 		return c, fmt.Errorf("invalid repository")
 	}
-	if c.BaseBranch == "" || c.GithubUser == "" || c.GHPath == "" {
+	if c.BaseBranch == "" || (c.ProjectMode == "github" && (c.GithubUser == "" || c.GHPath == "")) {
 		return c, fmt.Errorf("base_branch, github_user and gh_path required")
+	}
+	if strings.HasPrefix(c.BaseBranch, "-") || strings.ContainsAny(c.BaseBranch, " ~^:?*[\\\x00\r\n") || strings.Contains(c.BaseBranch, "..") || strings.Contains(c.BaseBranch, "@{") {
+		return c, fmt.Errorf("invalid base branch")
 	}
 	if c.MaxWorkers < 1 || c.MaxWorkers > 2 {
 		return c, fmt.Errorf("max_workers must be 1 or 2")
@@ -84,8 +104,15 @@ func LoadConfig(path string) (Config, error) {
 	if c.MaxFixes < 1 || c.TimeoutMinutes < 1 || c.ManagerInterval < 3600 || c.PollSeconds < 5 {
 		return c, fmt.Errorf("invalid limits; board interval must be >=3600 seconds")
 	}
-	if c.WorkerModel != "gpt-6.1-sol" || c.WorkerEffort != "low" || c.FallbackModel != "gpt-6-sol" || c.FallbackEffort != "medium" || c.ManagerModel != "gpt-6-luna" || c.ReviewerModel != "gpt-6-luna" || c.OtherEffort != "low" {
-		return c, fmt.Errorf("model configuration differs from authorized policy")
+	for _, model := range []string{c.WorkerModel, c.FallbackModel, c.ManagerModel, c.ReviewerModel} {
+		if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(model) {
+			return c, fmt.Errorf("invalid model name")
+		}
+	}
+	for _, effort := range []string{c.WorkerEffort, c.FallbackEffort, c.OtherEffort} {
+		if effort != "low" && effort != "medium" && effort != "high" && effort != "xhigh" {
+			return c, fmt.Errorf("invalid reasoning effort")
+		}
 	}
 	for _, v := range []string{c.Board, c.Todo, c.Progress, c.Done} {
 		if !regexp.MustCompile(`^[a-f0-9]{24}$`).MatchString(v) {

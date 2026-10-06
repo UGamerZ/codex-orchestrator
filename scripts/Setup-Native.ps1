@@ -4,7 +4,7 @@ $projectRoot=Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projectRoot
 $actor=[Security.Principal.WindowsIdentity]::GetCurrent()
 if (!(New-Object Security.Principal.WindowsPrincipal($actor)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run native setup in an Administrator PowerShell' }
-if (!(Test-Path -LiteralPath $Config)) { Copy-Item -LiteralPath config.native.example.json -Destination $Config }
+if (!(Test-Path -LiteralPath $Config)) { & (Join-Path $PSScriptRoot 'Configure-Project.ps1') -Backend native-windows -Config $Config }
 $settings=Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
 if ($settings.backend -ne 'native-windows') { throw 'Native configuration required' }
 $nativeRoot=[IO.Path]::GetFullPath($settings.native_root)
