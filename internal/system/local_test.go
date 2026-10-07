@@ -158,6 +158,24 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 		t.Fatal("base branch was modified")
 	}
 	// A human update is never overwritten by automatic publication.
+	os.MkdirAll(filepath.Join(p.Workspace, ".github", "workflows"), 0755)
+	os.WriteFile(filepath.Join(p.Workspace, ".github", "workflows", "test.yml"), []byte("name: test\n"), 0644)
+	workflowReq := broker.Request{Operation: "publish", Base: c.BaseBranch, Branch: j.Branch, SHA: j.BaseSHA, ExpectedHead: j.Head, Message: "Add test workflow"}
+	if e = r.localRequest(ctx, &workflowReq); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = broker.Execute(ctx, workflowReq, p); e == nil || !strings.Contains(e.Error(), "workflow edit needs explicit human permission") {
+		t.Fatalf("workflow without approval: %v", e)
+	}
+	workflowReq.AllowWorkflowEdits = true
+	workflowResult, e := broker.Execute(ctx, workflowReq, p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = r.acceptLocal(ctx, &j, "publish", &workflowResult); e != nil {
+		t.Fatal(e)
+	}
+	j.Head = workflowResult.SHA
 	run("--git-dir="+c.LocalRepository, "update-ref", "refs/heads/"+j.Branch, j.BaseSHA)
 	req = broker.Request{Operation: "publish", Base: c.BaseBranch, Branch: j.Branch, SHA: j.BaseSHA, Message: "third"}
 	os.WriteFile(filepath.Join(p.Workspace, "README.md"), []byte("third"), 0600)

@@ -21,18 +21,19 @@ import (
 )
 
 type Request struct {
-	Assets       []Asset
-	ExpectedHead string
-	Local        bool
-	Bundle       []byte
-	Operation    string
-	Repository   string
-	Base         string
-	SHA          string
-	Branch       string
-	Token        string
-	Message      string
-	PR           int
+	AllowWorkflowEdits bool
+	Assets             []Asset
+	ExpectedHead       string
+	Local              bool
+	Bundle             []byte
+	Operation          string
+	Repository         string
+	Base               string
+	SHA                string
+	Branch             string
+	Token              string
+	Message            string
+	PR                 int
 }
 type Result struct {
 	Files   []string `json:"files,omitempty"`
@@ -338,7 +339,7 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	}
 	// Workflow edits need a separately scoped permission; do not publish them silently.
 	for _, p := range strings.Split(string(b), "\n") {
-		if strings.HasPrefix(p, ".github/workflows/") {
+		if strings.HasPrefix(p, ".github/workflows/") && !r.AllowWorkflowEdits {
 			return fmt.Errorf("workflow edit needs explicit human permission")
 		}
 	}
