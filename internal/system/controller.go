@@ -213,6 +213,8 @@ func (c *Controller) answers(ctx context.Context) error {
 						j.Answer = m.Text
 						j.Clarifications = append(j.Clarifications, Clarification{Role: j.Role, Origin: j.QuestionOrigin, Question: j.Question, Answer: m.Text, At: time.Now().UTC()})
 						j.ClarificationRetries = 0
+						j.ModelBusyRetries = 0
+						j.RetryAt = time.Time{}
 						j.Question = ""
 						j.QuestionMessage = 0
 						if j.Role == "executor" {
@@ -448,6 +450,19 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		j.Session = r.Session
 	}
 	if r.Err != nil {
+		if r.ModelBusy {
+			j.ModelBusyRetries++
+			if j.ModelBusyRetries <= 6 {
+				j.RetryAt = time.Now().Add(5 * time.Minute)
+				j.Stage = "queued"
+				if r.Role == "reviewer" {
+					j.Stage = "review"
+				}
+				return nil
+			}
+			c.wait(j, "The selected model remained overloaded after six automatic retries. Your task and session are preserved; reply to retry later.")
+			return nil
+		}
 		if r.RateLimited {
 			j.RetryAt = time.Now().Add(time.Hour)
 			j.Stage = "queued"
@@ -470,6 +485,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		return nil
 	}
 	j.LastError = ""
+	j.ModelBusyRetries = 0
 	if r.Role == "publisher" {
 		if !r.Publication.Changed && j.PR == 0 && (r.Publication.SHA == j.BaseSHA || r.Publication.SHA == "") {
 			c.wait(j, "The executor finished, but there are no changes for a new review. Clarify the expected result.")

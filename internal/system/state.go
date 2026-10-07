@@ -9,6 +9,7 @@ import (
 )
 
 type Job struct {
+	ModelBusyRetries     int             `json:"model_busy_retries,omitempty"`
 	ReviewPolicyVersion  int             `json:"review_policy_version,omitempty"`
 	CommitTitle          string          `json:"commit_title,omitempty"`
 	Clarifications       []Clarification `json:"clarifications,omitempty"`

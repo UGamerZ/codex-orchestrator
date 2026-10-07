@@ -159,6 +159,7 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		d := strings.ToLower(stdout.String() + stderr.String())
 		result.RateLimited = strings.Contains(d, "usage limit") || strings.Contains(d, "rate limit") || strings.Contains(d, "quota")
 		result.ModelUnavailable = strings.Contains(d, "model_not_found") || strings.Contains(d, "model is not supported")
+		result.ModelBusy = modelBusy(d)
 		result.Err = fmt.Errorf("native agent failed inside sandbox; no unrestricted retry is permitted")
 		if ctx.Err() != nil {
 			result.Err = fmt.Errorf("native agent timed out; process job terminated")

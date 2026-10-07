@@ -24,6 +24,7 @@ type Verdict struct {
 	Selected    []string `json:"selected"`
 }
 type RunResult struct {
+	ModelBusy        bool
 	ID               string
 	Role             string
 	Session          string
@@ -312,6 +313,7 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 		diagnostic := strings.ToLower(stdout.String() + stderr.String())
 		result.RateLimited = strings.Contains(diagnostic, "usage limit") || strings.Contains(diagnostic, "rate limit") || strings.Contains(diagnostic, "quota")
 		result.ModelUnavailable = strings.Contains(diagnostic, "model_not_found") || strings.Contains(diagnostic, "model is not supported") || strings.Contains(diagnostic, "model does not exist")
+		result.ModelBusy = modelBusy(diagnostic)
 		result.Err = fmt.Errorf("agent execution failed (logs withheld to protect task data)")
 		if ctx.Err() != nil {
 			result.Err = fmt.Errorf("agent execution timed out")

@@ -1,1 +1,1 @@
-Retry failed Git pushes and preserve safe publication diagnostics
+Retry temporary model capacity failures without losing agent sessions
