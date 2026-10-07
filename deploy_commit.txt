@@ -1,1 +1,1 @@
-Confirm branch changes before blocking automatic task fixes
+Require evidence for review findings and check existing safeguards
