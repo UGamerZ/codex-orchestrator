@@ -98,14 +98,12 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		if r.Local {
 			filePolicy = "always"
 		}
-		cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + filepath.Join(p.Publish, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "credential.helper=", "-c", "protocol.file.allow=" + filePolicy, "-c", "protocol.ext.allow=never"}, args...)...)
-		cmd.Dir = dir
-		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "SystemRoot=" + os.Getenv("SystemRoot"), "HOME=" + p.Publish, "TEMP=" + filepath.Join(p.Publish, "tmp"), "TMP=" + filepath.Join(p.Publish, "tmp"), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+r.Token))}
-		b, e := cmd.Output()
-		if e != nil {
-			return nil, fmt.Errorf("trusted Git operation failed: %s", args[0])
-		}
-		return b, nil
+		return gitOutput(ctx, args[0], r.Token, func() *exec.Cmd {
+			cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + filepath.Join(p.Publish, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "credential.helper=", "-c", "protocol.file.allow=" + filePolicy, "-c", "protocol.ext.allow=never"}, args...)...)
+			cmd.Dir = dir
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "SystemRoot=" + os.Getenv("SystemRoot"), "HOME=" + p.Publish, "TEMP=" + filepath.Join(p.Publish, "tmp"), "TMP=" + filepath.Join(p.Publish, "tmp"), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+r.Token))}
+			return cmd
+		})
 	}
 	if e := os.MkdirAll(p.Publish, 0700); e != nil {
 		return e

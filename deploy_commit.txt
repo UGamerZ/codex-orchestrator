@@ -1,1 +1,1 @@
-Honor task-scoped human approval when publishing workflow changes
+Retry failed Git pushes and preserve safe publication diagnostics
