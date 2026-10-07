@@ -84,40 +84,6 @@ func (c *Controller) poll(ctx context.Context) error {
 	if e := c.discoverPRs(ctx); e != nil {
 		log.Printf("GitHub: %v", e)
 	}
-	due := time.Since(c.State.LastManager) >= time.Duration(c.C.ManagerInterval)*time.Second
-	manager := c.State.Jobs["manager"]
-	if (due || c.State.BoardCheckRequested) && (manager == nil || manager.Stage == "done") {
-		cards, e := c.API.Cards(ctx)
-		if e != nil {
-			return e
-		}
-		// Manual requests do not postpone the next scheduled check.
-		if due {
-			c.State.LastManager = time.Now().UTC()
-		}
-		manual := c.State.BoardCheckRequested
-		c.State.BoardCheckRequested = false
-		pending := []*Job{}
-		for _, card := range cards {
-			if !card.Closed && card.List == c.C.Todo {
-				id := card.ID
-				if _, known := c.State.Jobs[id]; !known {
-					pending = append(pending, &Job{ID: id, Card: id, Title: card.Name, Description: card.Desc, Branch: "codex/" + id, Role: "executor", Stage: "queued"})
-				}
-			}
-		}
-		c.State.Pending = pending
-		if len(pending) > 0 {
-			if j := c.State.Jobs["manager"]; j == nil || j.Stage == "done" {
-				c.State.Jobs["manager"] = &Job{ID: "manager", Title: "Prioritize Trello tasks", Role: "manager", Stage: "queued"}
-			}
-		}
-		if manual {
-			if _, e := c.API.Send(ctx, fmt.Sprintf("Board check complete: %d new To Do task(s). Tasks are queued for the manager; executor limits still apply.", len(pending))); e != nil {
-				log.Printf("board check notification: %v", e)
-			}
-		}
-	}
 	for _, j := range c.State.Jobs {
 		if j.Card != "" && j.DoneMoved && !reviewComplete(j) && !j.ClosedPR {
 			if e := c.API.Move(ctx, j.Card, c.C.Progress); e != nil {
@@ -131,6 +97,7 @@ func (c *Controller) poll(ctx context.Context) error {
 				log.Printf("Trello Done: %v", e)
 			} else {
 				j.DoneMoved = true
+				c.State.BoardCheckAfterDone = true
 			}
 		}
 		if j.Stage == "waiting" && j.QuestionMessage == 0 {
@@ -158,6 +125,41 @@ func (c *Controller) poll(ctx context.Context) error {
 				j.NotifiedHead = j.Head
 			} else {
 				log.Printf("verdict notification: %v", e)
+			}
+		}
+	}
+	due := time.Since(c.State.LastManager) >= time.Duration(c.C.ManagerInterval)*time.Second
+	manager := c.State.Jobs["manager"]
+	if (due || c.State.BoardCheckRequested || c.State.BoardCheckAfterDone) && (manager == nil || manager.Stage == "done") {
+		cards, e := c.API.Cards(ctx)
+		if e != nil {
+			return e
+		}
+		// Event-triggered checks do not postpone the next scheduled check.
+		if due {
+			c.State.LastManager = time.Now().UTC()
+		}
+		manual := c.State.BoardCheckRequested
+		c.State.BoardCheckRequested = false
+		c.State.BoardCheckAfterDone = false
+		pending := []*Job{}
+		for _, card := range cards {
+			if !card.Closed && card.List == c.C.Todo {
+				id := card.ID
+				if _, known := c.State.Jobs[id]; !known {
+					pending = append(pending, &Job{ID: id, Card: id, Title: card.Name, Description: card.Desc, Branch: "codex/" + id, Role: "executor", Stage: "queued"})
+				}
+			}
+		}
+		c.State.Pending = pending
+		if len(pending) > 0 {
+			if j := c.State.Jobs["manager"]; j == nil || j.Stage == "done" {
+				c.State.Jobs["manager"] = &Job{ID: "manager", Title: "Prioritize Trello tasks", Role: "manager", Stage: "queued"}
+			}
+		}
+		if manual {
+			if _, e := c.API.Send(ctx, fmt.Sprintf("Board check complete: %d new To Do task(s). Tasks are queued for the manager; executor limits still apply.", len(pending))); e != nil {
+				log.Printf("board check notification: %v", e)
 			}
 		}
 	}

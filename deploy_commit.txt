@@ -1,1 +1,1 @@
-Provide local task attachments and read-only project branch references
+Check To Do automatically after moving a reviewed task to Done

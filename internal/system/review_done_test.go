@@ -25,6 +25,9 @@ func TestDoneRequiresReviewOfCurrentHead(t *testing.T) {
 			fakePull(c.API, "head")
 			moved := ""
 			c.API.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+				if strings.HasSuffix(r.URL.Path, "/cards") {
+					return response(`[]`), nil
+				}
 				if strings.HasSuffix(r.URL.Path, "/getUpdates") {
 					return response(`{"ok":true,"result":[]}`), nil
 				}

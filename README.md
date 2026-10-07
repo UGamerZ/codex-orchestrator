@@ -36,6 +36,8 @@ Windows they are read-only under the workspace's `.orchestrator-review/context`.
 
 1. People manually add cards to the dedicated board's **To Do** list.
 2. Once an hour, the manager selects up to two independent tasks.
+   A successful move to Done also triggers an immediate To Do check, preserving
+   the hourly schedule and executor limits. If the manager is busy, the request waits.
    A card title can be the complete specification; an empty description is not a blocker.
 3. The controller moves cards to **In Progress**. At most two executors run at once.
 4. Each executor works in a new `codex/<card-id>` branch.

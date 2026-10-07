@@ -50,6 +50,7 @@ type Clarification struct {
 	At       time.Time `json:"at"`
 }
 type State struct {
+	BoardCheckAfterDone bool            `json:"board_check_after_done,omitempty"`
 	BoardCheckRequested bool            `json:"board_check_requested,omitempty"`
 	Jobs                map[string]*Job `json:"jobs"`
 	TelegramOffset      int64           `json:"telegram_offset"`
