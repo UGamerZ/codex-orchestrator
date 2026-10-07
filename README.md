@@ -13,6 +13,11 @@ Configure integrations and verify isolation before starting task processing.
 
 ## Task reference materials
 
+Documentation-only PRs receive a review focused on factual accuracy, essential usage
+steps, and the intended audience. Wording preferences, optional technical detail, and
+pre-existing implementation defects do not require another documentation fix.
+Actual code changes continue to receive the full code review.
+
 Before each executor or reviewer run, the trusted service downloads files attached
 to the Trello card and HTTPS links in its description and supplied answer. Trello
 download authentication stays on the host; agents receive only local files and a

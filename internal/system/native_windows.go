@@ -78,10 +78,12 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		result.BaseSHA = b.SHA
 	}
 	if role == "reviewer" {
-		if _, e := r.nativeBroker(ctx, &j, "review"); e != nil {
+		review, e := r.nativeBroker(ctx, &j, "review")
+		if e != nil {
 			result.Err = e
 			return result
 		}
+		prompt += documentationReviewInstructions(review.Files)
 	}
 	if role != "manager" {
 		if _, e := r.nativeBroker(ctx, &j, "context"); e != nil {

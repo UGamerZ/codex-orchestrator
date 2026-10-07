@@ -119,8 +119,12 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 		if e = r.localRequest(ctx, &req); e != nil {
 			t.Fatal(e)
 		}
-		if _, e = broker.Execute(ctx, req, p); e != nil {
-			t.Fatal(e)
+		reviewResult, reviewErr := broker.Execute(ctx, req, p)
+		if reviewErr != nil {
+			t.Fatal(reviewErr)
+		}
+		if !documentationOnly(reviewResult.Files) {
+			t.Fatalf("Markdown diff did not activate documentation review: %v", reviewResult.Files)
 		}
 		diff, e := os.ReadFile(filepath.Join(p.Review, "diff.patch"))
 		if e != nil || !strings.Contains(string(diff), "change") {
@@ -129,6 +133,25 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 		if e = a.Comment(ctx, j.PR, "Review without approval"); e != nil {
 			t.Fatal(e)
 		}
+	}
+	// An exhausted legacy documentation review is reassessed once, without approval
+	// or another automatic fix budget.
+	r.C.Backend = "native-windows"
+	j.Stage = "waiting"
+	j.Role = "executor"
+	j.Fixes = 4
+	j.Question = "The automatic fix limit has been reached. Findings: wording"
+	controller := &Controller{Runner: &r, State: &State{Jobs: map[string]*Job{j.ID: &j}}}
+	controller.recoverDocumentationReviews(ctx)
+	if j.Stage != "review" || j.Role != "reviewer" || j.Fixes != 4 || j.ReviewPolicyVersion != documentationReviewPolicyVersion {
+		t.Fatalf("documentation recovery failed: %+v", j)
+	}
+	j.Stage = "waiting"
+	j.Role = "executor"
+	j.Question = "The automatic fix limit has been reached. Findings: still incorrect"
+	controller.recoverDocumentationReviews(ctx)
+	if j.Stage != "waiting" {
+		t.Fatal("documentation recovery looped")
 	}
 	base, e := localGit(ctx, c, "rev-parse", "refs/heads/main")
 	if e != nil || strings.TrimSpace(string(base)) != j.BaseSHA {

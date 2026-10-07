@@ -35,9 +35,10 @@ type Request struct {
 	PR           int
 }
 type Result struct {
-	Bundle  []byte `json:"bundle,omitempty"`
-	SHA     string `json:"sha"`
-	Changed bool   `json:"changed"`
+	Files   []string `json:"files,omitempty"`
+	Bundle  []byte   `json:"bundle,omitempty"`
+	SHA     string   `json:"sha"`
+	Changed bool     `json:"changed"`
 }
 type Paths struct{ Workspace, Publish, Review string }
 
@@ -174,7 +175,17 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		if e = writeReviewFile(p.Review, "description.txt", []byte(r.Message)); e != nil {
 			return e
 		}
-		return json.NewEncoder(output).Encode(Result{SHA: r.SHA})
+		changed, e := git(dir, "diff", "--name-only", "-z", "--no-ext-diff", "--no-textconv", "origin/"+r.Base+"..."+r.SHA, "--")
+		if e != nil {
+			return e
+		}
+		files := []string{}
+		for _, file := range strings.Split(string(changed), "\x00") {
+			if file != "" {
+				files = append(files, file)
+			}
+		}
+		return json.NewEncoder(output).Encode(Result{SHA: r.SHA, Files: files})
 	}
 	if r.Operation == "context" {
 		if e := prepareContext(r, p, git, dir); e != nil {

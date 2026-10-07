@@ -41,6 +41,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	if e := c.Runner.StopAbandoned(ctx); e != nil {
 		return e
 	}
+	c.recoverDocumentationReviews(ctx)
 	if e := c.save(); e != nil {
 		return e
 	}
@@ -558,6 +559,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 			return nil
 		}
 		j.ReviewedHead = j.Head
+		j.ReviewPolicyVersion = documentationReviewPolicyVersion
 		if v.Status == "passed" {
 			j.Stage = "passed"
 			return nil

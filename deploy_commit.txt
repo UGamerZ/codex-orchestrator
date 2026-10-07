@@ -1,1 +1,1 @@
-Check To Do automatically after moving a reviewed task to Done
+Review documentation for factual accuracy and intended audience

@@ -238,10 +238,12 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 		result.BaseSHA = p.SHA
 	}
 	if role == "reviewer" {
-		if _, e := r.Broker(ctx, &j, "review"); e != nil {
+		review, e := r.Broker(ctx, &j, "review")
+		if e != nil {
 			result.Err = e
 			return result
 		}
+		prompt += documentationReviewInstructions(review.Files)
 	}
 	if role != "manager" {
 		if _, e := r.Broker(ctx, &j, "context"); e != nil {
