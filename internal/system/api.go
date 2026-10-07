@@ -97,6 +97,33 @@ func (a *API) Pulls(ctx context.Context) ([]Pull, error) {
 	}
 	return out, nil
 }
+
+// BranchHead confirms a PR-list discrepancy against the branch itself.
+// GitHub's PR list can briefly lag behind a successful push.
+func (a *API) BranchHead(ctx context.Context, p Pull) (string, error) {
+	if a.C.ProjectMode == "local" {
+		return p.Head.SHA, nil
+	}
+	if p.Head.Repo.FullName == "" || p.Head.Ref == "" {
+		return "", fmt.Errorf("PR head repository or branch unavailable")
+	}
+	b, e := a.gh(ctx, "api", "repos/"+p.Head.Repo.FullName+"/git/ref/heads/"+url.PathEscape(p.Head.Ref), "-H", "Cache-Control: no-cache")
+	if e != nil {
+		return "", e
+	}
+	var ref struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if e = json.Unmarshal(b, &ref); e != nil {
+		return "", e
+	}
+	if ref.Object.SHA == "" {
+		return "", fmt.Errorf("branch head unavailable")
+	}
+	return ref.Object.SHA, nil
+}
 func (a *API) CreatePR(ctx context.Context, j *Job) (int, string, error) {
 	if a.C.ProjectMode == "local" {
 		return a.createLocalReview(ctx, j)

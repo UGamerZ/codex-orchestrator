@@ -272,9 +272,19 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 			j = &Job{ID: id, Title: p.Title, Description: p.Body, Branch: "codex/" + id, Head: p.Head.SHA, PR: p.Number, PRURL: p.URL, External: true, Role: "reviewer", Stage: "review"}
 			c.State.Jobs[id] = j
 		} else if j.Head != p.Head.SHA && j.Stage != "running" && j.Stage != "publishing" && j.Stage != "publish" && j.Stage != "queued" {
+			// Do not classify our own push as a human edit based on a stale PR list.
+			head, e := c.API.BranchHead(ctx, p)
+			if e != nil {
+				return e
+			}
+			if head == j.Head {
+				continue
+			}
+			p.Head.SHA = head
 			// A new head invalidates every previous verdict. Prepare a new snapshot for external PRs.
 			if !j.External {
 				j.Head = p.Head.SHA
+				j.ReviewedHead = ""
 				j.Role = "reviewer"
 				c.wait(j, "The review branch was changed outside the system. Automatic publication has stopped. Reply to review the new version; make further changes to this branch manually.")
 				j.External = true
