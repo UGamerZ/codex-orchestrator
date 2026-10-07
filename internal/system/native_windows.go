@@ -176,6 +176,7 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		return result
 	}
 	result.Err = validateVerdict(role, result.Verdict)
+	result.EmptyClarification = result.Err != nil && result.Err.Error() == "empty clarification"
 	return result
 }
 

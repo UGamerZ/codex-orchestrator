@@ -24,16 +24,17 @@ type Verdict struct {
 	Selected    []string `json:"selected"`
 }
 type RunResult struct {
-	ModelBusy        bool
-	ID               string
-	Role             string
-	Session          string
-	Verdict          Verdict
-	Err              error
-	RateLimited      bool
-	ModelUnavailable bool
-	BaseSHA          string
-	Publication      broker.Result
+	EmptyClarification bool
+	ModelBusy          bool
+	ID                 string
+	Role               string
+	Session            string
+	Verdict            Verdict
+	Err                error
+	RateLimited        bool
+	ModelUnavailable   bool
+	BaseSHA            string
+	Publication        broker.Result
 }
 type Runner struct {
 	C   Config
@@ -331,6 +332,7 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 		return result
 	}
 	if e = validateVerdict(role, result.Verdict); e != nil {
+		result.EmptyClarification = e.Error() == "empty clarification"
 		result.Err = e
 	}
 	return result

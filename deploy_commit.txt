@@ -1,1 +1,1 @@
-Retry temporary model capacity failures without losing agent sessions
+Retry invalid empty clarifications without losing the task or session
