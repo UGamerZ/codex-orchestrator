@@ -16,11 +16,12 @@ import (
 )
 
 type Verdict struct {
-	Status   string   `json:"status"`
-	Question string   `json:"question"`
-	Summary  string   `json:"summary"`
-	Findings []string `json:"findings"`
-	Selected []string `json:"selected"`
+	CommitTitle string   `json:"commit_title"`
+	Status      string   `json:"status"`
+	Question    string   `json:"question"`
+	Summary     string   `json:"summary"`
+	Findings    []string `json:"findings"`
+	Selected    []string `json:"selected"`
 }
 type RunResult struct {
 	ID               string
@@ -143,7 +144,7 @@ func (r *Runner) Broker(ctx context.Context, j *Job, operation string) (broker.R
 	if e != nil {
 		return out, fmt.Errorf("GitHub credential unavailable")
 	}
-	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: clip(j.Title, 200)}
+	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: publicationTitle(j)}
 	req.ExpectedHead = j.Head
 	if operation == "review" || (operation == "prepare" && j.External) {
 		req.PR = j.PR
@@ -325,6 +326,9 @@ func validateVerdict(role string, v Verdict) error {
 		return nil
 	}
 	if role == "executor" && v.Status == "completed" && strings.TrimSpace(v.Summary) != "" {
+		if strings.TrimSpace(v.CommitTitle) == "" || strings.ContainsAny(v.CommitTitle, "\r\n\x00") || len([]rune(v.CommitTitle)) > 100 {
+			return fmt.Errorf("executor must provide a single-line commit_title of at most 100 characters")
+		}
 		return nil
 	}
 	if role == "reviewer" && v.Status == "passed" && len(v.Findings) == 0 {

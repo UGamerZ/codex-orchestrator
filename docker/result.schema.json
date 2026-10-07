@@ -5,8 +5,9 @@
     "status": {"type":"string","enum":["completed","question","blocked","passed","changes"]},
     "question": {"type":"string"},
     "summary": {"type":"string"},
+    "commit_title": {"type":"string","maxLength":100},
     "findings": {"type":"array","items":{"type":"string"}},
     "selected": {"type":"array","items":{"type":"string"}}
   },
-  "required": ["status","question","summary","findings","selected"]
+  "required": ["status","question","summary","commit_title","findings","selected"]
 }

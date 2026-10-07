@@ -57,7 +57,7 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 	if e != nil {
 		return broker.Result{}, fmt.Errorf("GitHub credential unavailable")
 	}
-	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: clip(j.Title, 200)}
+	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: publicationTitle(j)}
 	req.ExpectedHead = j.Head
 	if operation == "prepare" && j.External {
 		req.SHA = j.Head

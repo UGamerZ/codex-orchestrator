@@ -60,7 +60,8 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 		if e = os.WriteFile(filepath.Join(p.Workspace, "README.md"), []byte(strings.Repeat("change\n", round+1)), 0600); e != nil {
 			t.Fatal(e)
 		}
-		req = broker.Request{Operation: "publish", Base: c.BaseBranch, Branch: j.Branch, SHA: j.BaseSHA, ExpectedHead: j.Head, Message: "Local change"}
+		j.CommitTitle = []string{"Add initial local content", "Extend local content after review"}[round]
+		req = broker.Request{Operation: "publish", Base: c.BaseBranch, Branch: j.Branch, SHA: j.BaseSHA, ExpectedHead: j.Head, Message: publicationTitle(&j)}
 		if e = r.localRequest(ctx, &req); e != nil {
 			t.Fatal(e)
 		}
@@ -72,6 +73,10 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 			t.Fatal(e)
 		}
 		j.Head = result.SHA
+		subject, err := localGit(ctx, c, "log", "-1", "--format=%s", j.Head)
+		if err != nil || strings.TrimSpace(string(subject)) != j.CommitTitle {
+			t.Fatalf("published commit subject: %s, error: %v", subject, err)
+		}
 		link, e := localGit(ctx, c, "ls-tree", j.Head, "--", "alias")
 		if e != nil || !strings.HasPrefix(string(link), "120000 ") {
 			t.Fatal("publication changed the tracked symlink mode")
