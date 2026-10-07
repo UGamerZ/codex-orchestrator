@@ -83,6 +83,12 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 			return result
 		}
 	}
+	if role != "manager" {
+		if _, e := r.nativeBroker(ctx, &j, "context"); e != nil {
+			result.Err = e
+			return result
+		}
+	}
 	home := filepath.Join(filepath.Dir(p.Publish), role+"-runtime")
 	if e = os.MkdirAll(filepath.Join(home, "scratch"), 0700); e != nil {
 		result.Err = e
@@ -211,7 +217,7 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		return e
 	}
 	common := "$ErrorActionPreference='Stop'; $actor=[Security.Principal.WindowsIdentity]::GetCurrent().Name; if ($actor -notmatch 'CodexSandboxOffline') { throw 'Dedicated offline sandbox user required' };"
-	if _, e = run("executor", common+"[IO.File]::WriteAllText("+psQuote(marker)+",'probe'); if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Workspace access failed' }; $blocked=$false; try { [IO.File]::ReadAllText("+psQuote(outside)+") | Out-Null } catch { $blocked=$true }; if (!$blocked) { throw 'Outside read allowed' }; 'executor-ok'"); e != nil {
+	if _, e = run("executor", common+"[IO.File]::WriteAllText("+psQuote(marker)+",'probe'); if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Workspace access failed' }; if ([IO.File]::ReadAllText("+psQuote(reviewMarker)+") -ne 'trusted-review-probe') { throw 'Executor reference read failed' }; $blocked=$false; try { [IO.File]::WriteAllText("+psQuote(reviewMarker)+",'changed') } catch { $blocked=$true }; if (!$blocked) { throw 'Executor can write trusted references' }; $blocked=$false; try { [IO.File]::ReadAllText("+psQuote(outside)+") | Out-Null } catch { $blocked=$true }; if (!$blocked) { throw 'Outside read allowed' }; 'executor-ok'"); e != nil {
 		return e
 	}
 	if _, e = run("reviewer", common+"if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Review read failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Review absolute-path read failed' }; if ([IO.File]::ReadAllText("+psQuote(reviewMarker)+") -ne 'trusted-review-probe') { throw 'Review material read failed' }; foreach ($target in @("+psQuote(marker)+","+psQuote(reviewMarker)+")) { $blocked=$false; try { [IO.File]::WriteAllText($target,'changed') } catch { $blocked=$true }; if (!$blocked) { throw 'Reviewer can write' } }; 'reviewer-ok'"); e != nil {

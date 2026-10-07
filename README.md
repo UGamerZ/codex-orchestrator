@@ -11,6 +11,27 @@ Start with `scripts/Configure-Project.ps1` and the [project setup guide](PROJECT
 Choose Docker or the [restricted Windows installation](NATIVE-INSTALL.md).
 Configure integrations and verify isolation before starting task processing.
 
+## Task reference materials
+
+Before each executor or reviewer run, the trusted service downloads files attached
+to the Trello card and HTTPS links in its description and supplied answer. Trello
+download authentication stays on the host; agents receive only local files and a
+manifest. Open local pictures with the image-viewing tool. Failed downloads are
+listed in the manifest so the agent can ask about the specific missing resource.
+Public HTTPS links are supported; other private services need separately supplied
+files. Downloads reject private-network destinations and credential forwarding.
+Limits are 32 files, 16 MiB per file, and 64 MiB of attachments per task.
+
+The same read-only context includes `branches.git`, an offline repository containing
+the selected project's branches and their history, plus `branches.txt` with commit
+IDs. Inspect other branches with Git `show`, `log`, or `diff`, then apply task-relevant
+changes in the task workspace. The reference repository has no remote or credentials,
+is protected from writes, and is excluded from published changes. Publication remains
+limited to the task's own `codex/<card-id>` branch. The branch bundle limit is 512 MiB.
+
+In Docker these materials are mounted read-only at `/review-input/context`. On
+Windows they are read-only under the workspace's `.orchestrator-review/context`.
+
 ## Workflow
 
 1. People manually add cards to the dedicated board's **To Do** list.

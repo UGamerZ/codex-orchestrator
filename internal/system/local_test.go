@@ -34,6 +34,7 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 	}
 	run("-C", source, "-c", "core.symlinks=true", "add", "--all")
 	run("-C", source, "-c", "user.name=Test", "-c", "user.email=test@localhost", "commit", "-m", "baseline")
+	run("-C", source, "branch", "other-work")
 	c := Config{ProjectMode: "local", LocalRepository: filepath.Join(root, "store.git"), BaseBranch: "main", StateDir: filepath.Join(root, "state"), NativeRoot: filepath.Join(root, "native")}
 	run("clone", "--bare", source, c.LocalRepository)
 	a := NewAPI(c)
@@ -56,6 +57,27 @@ func TestLocalProjectPublicationAndReview(t *testing.T) {
 		t.Fatal(e)
 	}
 	j.BaseSHA = result.SHA
+	contextRequest := broker.Request{Operation: "context", Base: c.BaseBranch, Branch: j.Branch, SHA: j.BaseSHA, Assets: []broker.Asset{{Name: "01-reference.png", Source: "https://example.org/reference.png", Data: []byte("test-reference")}}}
+	if e = r.localRequest(ctx, &contextRequest); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = broker.Execute(ctx, contextRequest, p); e != nil {
+		t.Fatal(e)
+	}
+	contextRoot := filepath.Join(p.Review, "context")
+	asset, e := os.ReadFile(filepath.Join(contextRoot, "attachments", "01-reference.png"))
+	if e != nil || string(asset) != "test-reference" {
+		t.Fatalf("context asset: %v", e)
+	}
+	refs := filepath.Join(contextRoot, "branches.git")
+	branch, e := exec.Command("git", "--git-dir="+refs, "rev-parse", "other-work").Output()
+	if e != nil || strings.TrimSpace(string(branch)) != j.BaseSHA {
+		t.Fatalf("read-only branch missing: %v", e)
+	}
+	config, e := os.ReadFile(filepath.Join(refs, "config"))
+	if e != nil || strings.Contains(string(config), "remote") || strings.Contains(string(config), c.LocalRepository) {
+		t.Fatal("reference Git config contains a remote or host path")
+	}
 	for round := 0; round < 2; round++ {
 		if e = os.WriteFile(filepath.Join(p.Workspace, "README.md"), []byte(strings.Repeat("change\n", round+1)), 0600); e != nil {
 			t.Fatal(e)

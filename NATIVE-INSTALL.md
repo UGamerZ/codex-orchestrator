@@ -42,6 +42,7 @@ Each task process tree is placed in a Windows Job Object with a 2 GB memory limi
 the tree. The process starts suspended and resumes after these limits are attached.
 
 `Check-NativeIsolation.ps1` checks the actual offline account, executor writes,
+executor read-only access to task attachments and reference branches,
 reviewer read-only access, denial of a sentinel outside the task, Internet blocking,
 and localhost blocking. Startup is refused unless the checks pass. The receipt is
 bound to the Codex CLI executable hash; repeat the checks after updating it.

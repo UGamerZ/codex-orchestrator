@@ -59,6 +59,12 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 	}
 	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: publicationTitle(j)}
 	req.ExpectedHead = j.Head
+	if operation == "context" {
+		req.Assets, e = r.API.TaskAssets(ctx, j)
+		if e != nil {
+			return broker.Result{}, e
+		}
+	}
 	if operation == "prepare" && j.External {
 		req.SHA = j.Head
 		req.PR = j.PR
@@ -90,9 +96,7 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 	if c.LocalRepository != "" {
 		fs[c.LocalRepository] = "deny"
 	}
-	if role == "reviewer" {
-		fs[filepath.Join(workspace, broker.ReviewDirectory)] = "read"
-	}
+	fs[filepath.Join(workspace, broker.ReviewDirectory)] = "read"
 	if runtime.GOOS == "windows" {
 		for drive := 'C'; drive <= 'Z'; drive++ {
 			root := string(drive) + ":\\"

@@ -1,1 +1,1 @@
-Use executor-provided change descriptions for each commit subject
+Provide local task attachments and read-only project branch references

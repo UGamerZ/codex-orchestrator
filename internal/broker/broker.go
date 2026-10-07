@@ -21,6 +21,7 @@ import (
 )
 
 type Request struct {
+	Assets       []Asset
 	ExpectedHead string
 	Local        bool
 	Bundle       []byte
@@ -55,7 +56,7 @@ func Execute(ctx context.Context, r Request, p Paths) (Result, error) {
 
 func Run() error {
 	var r Request
-	if e := json.NewDecoder(io.LimitReader(os.Stdin, 192<<20)).Decode(&r); e != nil {
+	if e := json.NewDecoder(io.LimitReader(os.Stdin, 384<<20)).Decode(&r); e != nil {
 		return e
 	}
 	return execute(context.Background(), r, Paths{"/workspace", "/publish", "/review-input"}, os.Stdout)
@@ -72,7 +73,7 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 			return e
 		}
 	}
-	if r.Operation != "prepare" && r.Operation != "publish" && r.Operation != "review" {
+	if r.Operation != "prepare" && r.Operation != "publish" && r.Operation != "review" && r.Operation != "context" {
 		return fmt.Errorf("operation forbidden")
 	}
 	if r.Branch == r.Base || r.PR < 0 {
@@ -174,6 +175,12 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 			return e
 		}
 		return json.NewEncoder(output).Encode(Result{SHA: r.SHA})
+	}
+	if r.Operation == "context" {
+		if e := prepareContext(r, p, git, dir); e != nil {
+			return e
+		}
+		return json.NewEncoder(output).Encode(Result{})
 	}
 	if r.Operation == "prepare" {
 		ref := r.SHA
