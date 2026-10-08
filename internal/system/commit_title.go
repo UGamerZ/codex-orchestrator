@@ -12,9 +12,13 @@ func publicationTitle(j *Job) string {
 	if title == "" {
 		title = "Update task implementation"
 	}
+	words := strings.Fields(title)
+	if len(words) > 5 {
+		title = strings.Join(words[:5], " ")
+	}
 	runes := []rune(title)
-	if len(runes) > 100 {
-		title = string(runes[:100])
+	if len(runes) > 60 {
+		title = string(runes[:60])
 	}
 	return title
 }

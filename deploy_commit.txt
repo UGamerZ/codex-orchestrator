@@ -1,1 +1,1 @@
-Route Telegram completion replies back to task execution
+Keep executor commit titles short

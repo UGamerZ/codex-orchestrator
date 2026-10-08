@@ -5,7 +5,7 @@
     "status": {"type":"string","enum":["completed","question","blocked","passed","changes"]},
     "question": {"type":"string"},
     "summary": {"type":"string"},
-    "commit_title": {"type":"string","maxLength":100},
+    "commit_title": {"type":"string","maxLength":60},
     "findings": {"type":"array","items":{"type":"string"}},
     "selected": {"type":"array","items":{"type":"string"}}
   },

@@ -345,8 +345,8 @@ func validateVerdict(role string, v Verdict) error {
 		return nil
 	}
 	if role == "executor" && v.Status == "completed" && strings.TrimSpace(v.Summary) != "" {
-		if strings.TrimSpace(v.CommitTitle) == "" || strings.ContainsAny(v.CommitTitle, "\r\n\x00") || len([]rune(v.CommitTitle)) > 100 {
-			return fmt.Errorf("executor must provide a single-line commit_title of at most 100 characters")
+		if strings.TrimSpace(v.CommitTitle) == "" || strings.ContainsAny(v.CommitTitle, "\r\n\x00") || len([]rune(v.CommitTitle)) > 60 || len(strings.Fields(v.CommitTitle)) > 5 {
+			return fmt.Errorf("executor must provide a single-line commit_title of at most 5 words and 60 characters")
 		}
 		return nil
 	}
