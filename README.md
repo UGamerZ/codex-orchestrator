@@ -205,3 +205,5 @@ Reference documentation: [Codex non-interactive mode](https://learn.chatgpt.com/
 
 See [NATIVE-INSTALL.md](NATIVE-INSTALL.md) for the restricted Windows backend,
 its isolation checks, and its limitations.
+
+Replies to a **Review complete** notification are human review feedback. The controller retains the feedback, acknowledges receipt in Telegram, returns open system-owned tasks to In Progress, and resumes their executor session followed by another internal review. Additional replies to the same notification remain valid. Active workers finish before the next turn starts. External branches remain review-only; closed PRs require a new task. Older completion notifications are also recognized when Telegram includes their original text in the reply.

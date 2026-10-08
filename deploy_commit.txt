@@ -1,1 +1,1 @@
-Retry invalid empty clarifications without losing the task or session
+Route Telegram completion replies back to task execution

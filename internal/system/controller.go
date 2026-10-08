@@ -88,6 +88,7 @@ func (c *Controller) poll(ctx context.Context) error {
 		log.Printf("GitHub: %v", e)
 	}
 	for _, j := range c.State.Jobs {
+		c.resumeFeedback(j)
 		if j.Card != "" && j.DoneMoved && !reviewComplete(j) && !j.ClosedPR {
 			if e := c.API.Move(ctx, j.Card, c.C.Progress); e != nil {
 				log.Printf("Trello return to In Progress: %v", e)
@@ -123,9 +124,10 @@ func (c *Controller) poll(ctx context.Context) error {
 			if c.C.ProjectMode == "local" {
 				note = "Local branch: " + j.Branch + ". A human accepts the changes."
 			}
-			_, e := c.API.Send(ctx, fmt.Sprintf("Review complete: no issues found.\n%s\n%s\n\n%s", j.Title, j.PRURL, note))
+			messageID, e := c.API.Send(ctx, fmt.Sprintf("Review complete: no issues found.\n%s\n%s\n\n%s", j.Title, j.PRURL, note))
 			if e == nil {
 				j.NotifiedHead = j.Head
+				j.CompletionMessages = append(j.CompletionMessages, messageID)
 			} else {
 				log.Printf("verdict notification: %v", e)
 			}
@@ -169,7 +171,7 @@ func (c *Controller) poll(ctx context.Context) error {
 	return nil
 }
 func reviewComplete(j *Job) bool {
-	return j.PR > 0 && j.Head != "" && j.Stage == "passed" && j.ReviewedHead == j.Head && !j.ClosedPR
+	return j.PR > 0 && j.Head != "" && j.Stage == "passed" && !j.FeedbackPending && j.ReviewedHead == j.Head && !j.ClosedPR
 }
 func (c *Controller) answers(ctx context.Context) error {
 	updates, e := c.API.Updates(ctx, c.State.TelegramOffset)
@@ -206,6 +208,18 @@ func (c *Controller) answers(ctx context.Context) error {
 					return e
 				}
 			} else if m.Reply != nil && strings.TrimSpace(m.Text) != "" {
+				if handled, err := c.completionFeedback(ctx, m); err != nil {
+					return err
+				} else if handled {
+					c.State.TelegramOffset = u.ID + 1
+					if err := c.save(); err != nil {
+						return err
+					}
+					if _, err := c.API.Send(ctx, "Your feedback was received and retained for this task. Open system-owned tasks return to In Progress for changes and another review. Replies to closed PRs cannot reopen them."); err != nil {
+						log.Printf("feedback acknowledgment: %v", err)
+					}
+					continue
+				}
 				for _, j := range c.State.Jobs {
 					if j.Stage == "waiting" && j.QuestionMessage == m.Reply.ID && j.QuestionMessage != 0 {
 						if len(j.Clarifications) == 0 && j.Answer != "" {

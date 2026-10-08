@@ -9,6 +9,8 @@ import (
 )
 
 type Job struct {
+	CompletionMessages   []int64         `json:"completion_messages,omitempty"`
+	FeedbackPending      bool            `json:"feedback_pending,omitempty"`
 	InvalidResultRetries int             `json:"invalid_result_retries,omitempty"`
 	ModelBusyRetries     int             `json:"model_busy_retries,omitempty"`
 	ReviewPolicyVersion  int             `json:"review_policy_version,omitempty"`
