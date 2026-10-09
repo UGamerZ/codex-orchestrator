@@ -162,6 +162,7 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		result.ModelBusy = modelBusy(d)
 		result.Err = fmt.Errorf("native agent failed inside sandbox; no unrestricted retry is permitted")
 		if ctx.Err() != nil {
+			result.TimedOut = true
 			result.Err = fmt.Errorf("native agent timed out; process job terminated")
 		}
 		return result

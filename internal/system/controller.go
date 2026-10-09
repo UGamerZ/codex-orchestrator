@@ -41,6 +41,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	if e := c.Runner.StopAbandoned(ctx); e != nil {
 		return e
 	}
+	c.recoverInterruptedAgents()
 	c.recoverDocumentationReviews(ctx)
 	c.recoverAuthorizedPublications()
 	c.recoverEmptyClarifications()
@@ -227,6 +228,7 @@ func (c *Controller) answers(ctx context.Context) error {
 						}
 						j.Answer = m.Text
 						j.Clarifications = append(j.Clarifications, Clarification{Role: j.Role, Origin: j.QuestionOrigin, Question: j.Question, Answer: m.Text, At: time.Now().UTC()})
+						j.StallRetries = 0
 						j.ClarificationRetries = 0
 						j.ModelBusyRetries = 0
 						j.InvalidResultRetries = 0
@@ -411,6 +413,7 @@ func (c *Controller) schedule() error {
 			}
 		}
 		j.Stage = "running"
+		j.RunStartedAt = time.Now().UTC()
 		j.Role = role
 		if role == "executor" {
 			j.Session = j.ExecutorSession
@@ -466,6 +469,10 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		j.Session = r.Session
 	}
 	if r.Err != nil {
+		if r.TimedOut {
+			c.retryStalledAgent(j, r.Role)
+			return nil
+		}
 		if r.EmptyClarification {
 			if j.InvalidResultRetries == 0 {
 				j.InvalidResultRetries = 1
@@ -513,6 +520,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		return nil
 	}
 	j.LastError = ""
+	j.StallRetries = 0
 	j.ModelBusyRetries = 0
 	j.InvalidResultRetries = 0
 	if r.Role == "publisher" {

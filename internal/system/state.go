@@ -9,6 +9,8 @@ import (
 )
 
 type Job struct {
+	StallRetries         int             `json:"stall_retries,omitempty"`
+	RunStartedAt         time.Time       `json:"run_started_at,omitempty"`
 	CompletionMessages   []int64         `json:"completion_messages,omitempty"`
 	FeedbackPending      bool            `json:"feedback_pending,omitempty"`
 	InvalidResultRetries int             `json:"invalid_result_retries,omitempty"`

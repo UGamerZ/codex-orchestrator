@@ -24,6 +24,7 @@ type Verdict struct {
 	Selected    []string `json:"selected"`
 }
 type RunResult struct {
+	TimedOut           bool
 	EmptyClarification bool
 	ModelBusy          bool
 	ID                 string
@@ -317,6 +318,7 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 		result.ModelBusy = modelBusy(diagnostic)
 		result.Err = fmt.Errorf("agent execution failed (logs withheld to protect task data)")
 		if ctx.Err() != nil {
+			result.TimedOut = true
 			result.Err = fmt.Errorf("agent execution timed out")
 		}
 		return result
