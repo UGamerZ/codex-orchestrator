@@ -1,1 +1,1 @@
-Report external branch review blockers
+Continue tasks after branch updates

@@ -1,4 +1,5 @@
 {
+  "auto_continue_task_branches": false,
     "backend":  "docker",
     "repository":  "OWNER/REPOSITORY",
     "base_branch":  "main",

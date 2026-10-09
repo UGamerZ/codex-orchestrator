@@ -1,4 +1,5 @@
 {
+  "auto_continue_task_branches": false,
     "backend":  "native-windows",
     "native_root":  "C:\\ProgramData\\CodexOrchestrator\\native",
     "codex_path":  "C:\\path\\to\\codex.exe",

@@ -296,6 +296,14 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 			id := fmt.Sprintf("pr-%d", p.Number)
 			j = &Job{ID: id, Title: p.Title, Description: p.Body, Branch: "codex/" + id, Head: p.Head.SHA, PR: p.Number, PRURL: p.URL, External: true, Role: "reviewer", Stage: "review"}
 			c.State.Jobs[id] = j
+		} else if c.C.AutoContinueTasks && systemCreatedTask(j) && p.Head.Repo.FullName == c.C.Repository && p.Head.Ref == j.Branch && (j.External || j.Head != p.Head.SHA) && j.Stage != "running" && j.Stage != "publishing" && j.Stage != "publish" && j.Stage != "queued" {
+			head, e := c.API.BranchHead(ctx, p)
+			if e != nil {
+				return e
+			}
+			if j.External || head != j.Head {
+				adoptTaskHead(j, head)
+			}
 		} else if j.Head != p.Head.SHA && j.Stage != "running" && j.Stage != "publishing" && j.Stage != "publish" && j.Stage != "queued" {
 			// Do not classify our own push as a human edit based on a stale PR list.
 			head, e := c.API.BranchHead(ctx, p)
@@ -572,6 +580,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		}
 		for _, id := range v.Selected {
 			if _, exists := c.State.Jobs[id]; !exists {
+				allowed[id].SystemCreated = true
 				c.State.Jobs[id] = allowed[id]
 			}
 		}

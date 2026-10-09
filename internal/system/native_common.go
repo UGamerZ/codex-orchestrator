@@ -59,6 +59,11 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 	}
 	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: publicationTitle(j)}
 	req.ExpectedHead = j.Head
+	req.AdoptTaskHead = operation == "prepare" && r.C.AutoContinueTasks && systemCreatedTask(j) && !j.External && j.Head != ""
+	if req.AdoptTaskHead {
+		req.SHA = j.Head
+		req.PR = j.PR
+	}
 	req.AllowWorkflowEdits = workflowApproved(j)
 	if operation == "context" {
 		req.Assets, e = r.API.TaskAssets(ctx, j)

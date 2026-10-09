@@ -21,6 +21,7 @@ import (
 )
 
 type Request struct {
+	AdoptTaskHead      bool
 	AllowWorkflowEdits bool
 	Assets             []Asset
 	ExpectedHead       string
@@ -193,6 +194,25 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		return json.NewEncoder(output).Encode(Result{})
 	}
 	if r.Operation == "prepare" {
+		if r.AdoptTaskHead {
+			if r.SHA == "" || r.SHA != r.ExpectedHead {
+				return fmt.Errorf("adoption needs exact task head")
+			}
+			var remote []byte
+			var err error
+			if r.Local {
+				remote, err = git(dir, "rev-parse", "refs/remotes/origin/"+r.Branch)
+			} else {
+				remote, err = git(dir, "ls-remote", "origin", "refs/heads/"+r.Branch)
+			}
+			if err != nil {
+				return err
+			}
+			fields := strings.Fields(string(remote))
+			if len(fields) == 0 || fields[0] != r.SHA {
+				return fmt.Errorf("task branch changed during adoption")
+			}
+		}
 		ref := r.SHA
 		if ref == "" {
 			ref = "origin/" + r.Base
@@ -249,6 +269,11 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 				}
 				return os.Lchown(p, 1000, 1000)
 			}); e != nil {
+				return e
+			}
+		}
+		if r.AdoptTaskHead {
+			if e := os.WriteFile(filepath.Join(p.Publish, "last-head"), []byte(sha), 0600); e != nil {
 				return e
 			}
 		}
