@@ -335,6 +335,14 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	if len(b) == 0 {
 		return json.NewEncoder(output).Encode(Result{SHA: parent, Changed: false})
 	}
+	// Reject destructive SQL before committing, pushing, or exporting a local bundle.
+	dataDiff, e := git(dir, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--unified=0")
+	if e != nil {
+		return e
+	}
+	if e = validateDataPreservationDiff(dataDiff); e != nil {
+		return e
+	}
 	// Workflow edits need a separately scoped permission; do not publish them silently.
 	for _, p := range strings.Split(string(b), "\n") {
 		if strings.HasPrefix(p, ".github/workflows/") && !r.AllowWorkflowEdits {
