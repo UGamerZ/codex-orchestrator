@@ -32,4 +32,5 @@
 <li><strong>Short commit titles.</strong> Executor commits use at most five meaningful words describing the actual change. Detailed explanations stay in the task summary.</li>
 <li><strong>Preserve existing data.</strong> Moving settings to JSON keeps the original records and table intact. Agents must not infer permission to delete data from plans for future cleanup. Publication blocks detected destructive database operations.</li>
 <li><strong>Recover interrupted agents.</strong> Timed-out or interrupted agent runs retry automatically up to three times while retaining their work. Safety restrictions and requests for human input remain in effect.</li>
+<li><strong>Visible review blockers.</strong> When an externally changed branch needs fixes, Telegram reports the findings and explains why automatic changes have stopped, instead of leaving the task silently inactive.</li>
 </ul>

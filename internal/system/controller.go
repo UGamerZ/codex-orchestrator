@@ -41,6 +41,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	if e := c.Runner.StopAbandoned(ctx); e != nil {
 		return e
 	}
+	c.recoverExternalReviewBlockers()
 	c.recoverInterruptedAgents()
 	c.recoverDocumentationReviews(ctx)
 	c.recoverAuthorizedPublications()
@@ -620,7 +621,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		}
 		j.Findings = v.Findings
 		if j.External {
-			j.Stage = "changes"
+			c.externalReviewBlocker(j)
 			return nil
 		}
 		j.Fixes++
