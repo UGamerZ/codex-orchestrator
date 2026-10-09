@@ -11,7 +11,7 @@ Start with `scripts/Configure-Project.ps1` and the [project setup guide](PROJECT
 Choose Docker or the [restricted Windows installation](NATIVE-INSTALL.md).
 Configure integrations and verify isolation before starting task processing.
 
-Workflow edits require an explicit human decision for that task. The executor asks a question beginning `May I add or modify a file in .github/workflows`, followed by the purpose. Reply `yes` or `да` directly to that question in Telegram. The trusted publisher checks that saved reply independently; approval does not grant other tasks permission, base-branch writes, force pushes, GitHub Approve, or merging.
+Workflow edits require an explicit human decision for that task. The executor asks a question beginning `May I add or modify a file in .github/workflows`, followed by the purpose. Reply `yes`, `yes, u can`, `yes, you can`, `go ahead`, or `да, разрешаю` directly to that question in Telegram. The trusted publisher checks that saved reply independently; approval does not grant other tasks permission, base-branch writes, force pushes, GitHub Approve, or merging.
 
 ## Task reference materials
 

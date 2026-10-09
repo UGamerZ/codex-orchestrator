@@ -1,1 +1,1 @@
-Protect data during agent migrations
+Accept explicit workflow approval phrases

@@ -14,10 +14,10 @@ func workflowApproved(j *Job) bool {
 		if !strings.HasPrefix(q, "may i add or modify a file in .github/workflows") {
 			continue
 		}
-		switch strings.ToLower(strings.TrimSpace(c.Answer)) {
-		case "yes", "yes.", "да", "да.":
+		switch workflowDecision(c.Answer) {
+		case "approve":
 			approved = true
-		case "no", "no.", "нет", "нет.":
+		case "deny":
 			approved = false
 		}
 	}
@@ -33,4 +33,24 @@ func (c *Controller) recoverAuthorizedPublications() {
 			j.LastError = ""
 		}
 	}
+}
+
+// Recognize explicit standalone approvals, not arbitrary sentences containing
+// yes (which may include conditions, refusal, or quoted approvals).
+func workflowDecision(answer string) string {
+	normalized := strings.ToLower(strings.TrimSpace(answer))
+	normalized = strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		switch r {
+		case ',', '.', '!', '?', ':', ';':
+			return ' '
+		}
+		return r
+	}, normalized)), " ")
+	switch normalized {
+	case "yes", "yes u can", "yes you can", "yes please", "yes go ahead", "go ahead", "approved", "i approve", "да", "да можно", "да разрешаю", "разрешаю":
+		return "approve"
+	case "no", "no you cannot", "no u cannot", "denied", "нет", "не разрешаю":
+		return "deny"
+	}
+	return ""
 }

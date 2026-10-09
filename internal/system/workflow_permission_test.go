@@ -35,3 +35,23 @@ func TestWorkflowPermissionIsExplicitAndTaskScoped(t *testing.T) {
 		t.Fatal("explicit refusal ignored")
 	}
 }
+
+func TestNaturalWorkflowApprovalReplies(t *testing.T) {
+	for _, answer := range []string{"yes, u can", "Yes, you can!", "yes please", "go ahead", "да, разрешаю", "да"} {
+		grant := Clarification{Role: "executor", Origin: "agent", Question: "May I add or modify a file in .github/workflows, to run tests?", Answer: answer, At: time.Now()}
+		j := &Job{Clarifications: []Clarification{grant}, Stage: "waiting", Role: "publisher", LastError: "workflow edit needs explicit human permission"}
+		c := &Controller{State: &State{Jobs: map[string]*Job{"task": j}}}
+		c.recoverAuthorizedPublications()
+		if j.Stage != "publish" {
+			t.Fatalf("approval %q not recovered", answer)
+		}
+	}
+	for _, answer := range []string{"yes but do not modify workflows", "yesterday", "the agent said yes", "maybe", "yes if it is safe"} {
+		if workflowDecision(answer) != "" {
+			t.Fatalf("ambiguous approval accepted: %q", answer)
+		}
+	}
+	if workflowDecision("no, you cannot") != "deny" {
+		t.Fatal("refusal ignored")
+	}
+}
