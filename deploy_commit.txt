@@ -1,1 +1,1 @@
-Add operator dashboard and alerts
+Add redacted agent log viewer

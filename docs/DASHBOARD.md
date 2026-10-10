@@ -33,3 +33,6 @@ Disable-ScheduledTask -TaskName CodexOrchestratorWatchdog
 ```
 
 Notification throttling and restart logs are stored in the private state directory. Native agent cleanup and bounded interruption recovery run before tasks resume.
+## Agent log viewer
+
+Open **Agents → View logs** for an active agent, or expand **Task agent logs** to select an executor/reviewer session from a completed task. The viewer refreshes with the page and shows recent tool calls, outputs, errors, and public progress/final messages. It reads at most the latest 1 MiB and displays at most 300 entries, with each entry limited to 8,000 characters. Private reasoning, input prompts, and credential-related entries are excluded. Known integration/Codex credentials and common token patterns are redacted; treat remaining project output as private operational data. Session ID and workspace must both match the selected task. Detailed session logs currently support the native Windows backend; Docker uses controller events.

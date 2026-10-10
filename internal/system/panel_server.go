@@ -61,6 +61,14 @@ func panelHandler(configPath, stateDir, token string, commands chan PanelCommand
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(state)
+		case r.URL.Path == "/api/agent-logs" && r.Method == "GET":
+			logs, err := readAgentLogs(configPath, stateDir, r.URL.Query().Get("id"), r.URL.Query().Get("role"))
+			if err != nil {
+				http.Error(w, "Log unavailable: "+err.Error(), 400)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(logs)
 		case r.URL.Path == "/api/activity" && r.Method == "GET":
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(nativePanelActivity(configPath, stateDir))
