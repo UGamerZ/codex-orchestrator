@@ -62,6 +62,7 @@ func run() error {
 	}
 	config := flag.String("config", "config.json", "configuration file")
 	check := flag.Bool("check", false, "validate configuration, Docker and API access without starting agents")
+	web := flag.String("web", "127.0.0.1:8787", "local dashboard address; empty disables it")
 	flag.Parse()
 	c, e := system.LoadConfig(*config)
 	if e != nil {
@@ -92,5 +93,8 @@ func run() error {
 	fmt.Fprint(lock, os.Getpid())
 	lock.Close()
 	defer os.Remove(lock.Name())
+	if e := ctrl.StartPanel(ctx, *web, *config); e != nil {
+		return e
+	}
 	return ctrl.Run(ctx)
 }

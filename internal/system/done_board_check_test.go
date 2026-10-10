@@ -27,9 +27,12 @@ func TestDoneTriggersBoardCheck(t *testing.T) {
 				c.State.Jobs["manager"] = &Job{ID: "manager", Role: "manager", Stage: "running"}
 			}
 			fakePull(c.API, "head")
-			scans, moves := 0, 0
+			scans, moves, notifications := 0, 0, 0
 			c.API.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
 				switch {
+				case strings.HasSuffix(r.URL.Path, "/sendMessage"):
+					notifications++
+					return response(`{"ok":true,"result":{"message_id":50}}`), nil
 				case strings.HasSuffix(r.URL.Path, "/getUpdates"):
 					return response(`{"ok":true,"result":[]}`), nil
 				case r.Method == "PUT" && strings.HasSuffix(r.URL.Path, "/cards/card"):
@@ -59,6 +62,9 @@ func TestDoneTriggersBoardCheck(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.moveFails {
+				if notifications != 1 {
+					t.Fatal("failed card move was not reported to Telegram")
+				}
 				if scans != 0 || c.State.BoardCheckAfterDone {
 					t.Fatal("failed move triggered check")
 				}

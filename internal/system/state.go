@@ -9,6 +9,8 @@ import (
 )
 
 type Job struct {
+	DataGuardVersion     int             `json:"data_guard_version,omitempty"`
+	BlockedReminder      time.Time       `json:"blocked_reminder,omitempty"`
 	SystemCreated        bool            `json:"system_created,omitempty"`
 	StallRetries         int             `json:"stall_retries,omitempty"`
 	RunStartedAt         time.Time       `json:"run_started_at,omitempty"`
@@ -58,12 +60,16 @@ type Clarification struct {
 	At       time.Time `json:"at"`
 }
 type State struct {
-	BoardCheckAfterDone bool            `json:"board_check_after_done,omitempty"`
-	BoardCheckRequested bool            `json:"board_check_requested,omitempty"`
-	Jobs                map[string]*Job `json:"jobs"`
-	TelegramOffset      int64           `json:"telegram_offset"`
-	LastManager         time.Time       `json:"last_manager"`
-	Pending             []*Job          `json:"pending"`
+	Paused              bool                       `json:"paused"`
+	Events              []PanelEvent               `json:"events,omitempty"`
+	IssueWarnings       map[string]time.Time       `json:"issue_warnings,omitempty"`
+	PendingConfig       map[string]json.RawMessage `json:"pending_config,omitempty"`
+	BoardCheckAfterDone bool                       `json:"board_check_after_done,omitempty"`
+	BoardCheckRequested bool                       `json:"board_check_requested,omitempty"`
+	Jobs                map[string]*Job            `json:"jobs"`
+	TelegramOffset      int64                      `json:"telegram_offset"`
+	LastManager         time.Time                  `json:"last_manager"`
+	Pending             []*Job                     `json:"pending"`
 }
 
 func LoadState(dir string) (*State, error) {

@@ -18,3 +18,13 @@ func TestDataPreservationGuard(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLCommentDoesNotBlockPublication(t *testing.T) {
+	diff := "+++ b/tests/_data/schema.sql\n+-- executing their DELETE/TRUNCATE statements against acceptance fixture rows.\n+SELECT 1;"
+	if err := validateDataPreservationDiff([]byte(diff)); err != nil {
+		t.Fatal(err)
+	}
+	if validateDataPreservationDiff([]byte(diff+"\n+DELETE FROM settings;")) == nil {
+		t.Fatal("actual deletion allowed")
+	}
+}

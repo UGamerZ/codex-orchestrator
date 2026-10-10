@@ -11,6 +11,8 @@ import (
 )
 
 type Controller struct {
+	Commands     chan PanelCommand
+	ConfigPath   string
 	ChannelReady bool
 	C            Config
 	API          *API
@@ -41,6 +43,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	if e := c.Runner.StopAbandoned(ctx); e != nil {
 		return e
 	}
+	c.recoverDataGuardPublications()
 	c.recoverExternalReviewBlockers()
 	c.recoverInterruptedAgents()
 	c.recoverDocumentationReviews(ctx)
@@ -52,8 +55,10 @@ func (c *Controller) Run(ctx context.Context) error {
 	tick := time.NewTicker(time.Duration(c.C.PollSeconds) * time.Second)
 	defer tick.Stop()
 	for {
+		c.applyPendingConfig(ctx)
 		if e := c.poll(ctx); e != nil {
 			log.Printf("poll: %v", e)
+			c.reportPanelIssue(ctx, "Board/controller polling", e)
 		}
 		if e := c.save(); e != nil {
 			return e
@@ -68,12 +73,17 @@ func (c *Controller) Run(ctx context.Context) error {
 			c.Runner.StopAbandoned(stopCtx)
 			return ctx.Err()
 		case r := <-c.Results:
+			if r.Err != nil {
+				c.reportPanelIssue(ctx, "Task ["+r.ID+"] "+r.Role, r.Err)
+			}
 			if e := c.finish(ctx, r); e != nil {
 				log.Printf("job result: %v", e)
 			}
 			if e := c.save(); e != nil {
 				return e
 			}
+		case command := <-c.Commands:
+			c.handlePanelCommand(command)
 		case <-tick.C:
 		}
 	}
@@ -83,17 +93,28 @@ func (c *Controller) poll(ctx context.Context) error {
 	if e := c.answers(ctx); e != nil {
 		c.ChannelReady = false
 		log.Printf("Telegram: %v", e)
+		c.panelEvent("integration-error", "", "Telegram unavailable; scheduling paused")
 	} else {
 		c.ChannelReady = true
 	}
 	if e := c.discoverPRs(ctx); e != nil {
 		log.Printf("GitHub: %v", e)
+		c.reportPanelIssue(ctx, "GitHub polling", e)
 	}
 	for _, j := range c.State.Jobs {
 		c.resumeFeedback(j)
+		if j.Stage == "waiting" && j.QuestionMessage != 0 && j.BlockedReminder.IsZero() {
+			j.BlockedReminder = time.Now().UTC()
+		}
+		if j.Stage == "waiting" && j.QuestionMessage != 0 && time.Since(j.BlockedReminder) >= time.Hour {
+			if _, err := c.API.Send(ctx, "Task still blocked ["+j.ID+"]: "+j.Title+"\n\n"+j.Question+"\n\nReply to the original question or use the dashboard."); err == nil {
+				j.BlockedReminder = time.Now().UTC()
+			}
+		}
 		if j.Card != "" && j.DoneMoved && !reviewComplete(j) && !j.ClosedPR {
 			if e := c.API.Move(ctx, j.Card, c.C.Progress); e != nil {
 				log.Printf("Trello return to In Progress: %v", e)
+				c.reportPanelIssue(ctx, "Trello return to In Progress", e)
 			} else {
 				j.DoneMoved = false
 			}
@@ -101,6 +122,7 @@ func (c *Controller) poll(ctx context.Context) error {
 		if reviewComplete(j) && j.Card != "" && !j.DoneMoved {
 			if e := c.API.Move(ctx, j.Card, c.C.Done); e != nil {
 				log.Printf("Trello Done: %v", e)
+				c.reportPanelIssue(ctx, "Trello Done", e)
 			} else {
 				j.DoneMoved = true
 				c.State.BoardCheckAfterDone = true
@@ -114,6 +136,7 @@ func (c *Controller) poll(ctx context.Context) error {
 			m, e := c.API.Send(ctx, fmt.Sprintf("%s [%s]: %s\n\n%s\n\nUse Reply on this message. Your answer is retained for this task. Do not include credentials or tokens; confirm when the required resource is ready.", label, j.ID, j.Title, j.Question))
 			if e == nil {
 				j.QuestionMessage = m
+				j.BlockedReminder = time.Now().UTC()
 			} else {
 				log.Printf("question delivery: %v", e)
 			}
@@ -347,7 +370,7 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 	return nil
 }
 func (c *Controller) schedule() error {
-	if !c.ChannelReady {
+	if !c.ChannelReady || c.State.Paused {
 		return nil
 	}
 	running, reviewer, manager := 0, false, false
@@ -395,6 +418,7 @@ func (c *Controller) schedule() error {
 			}
 		case "publish":
 			j.Stage = "publishing"
+			j.RunStartedAt = time.Now().UTC()
 			j.Role = "publisher"
 			if e := c.save(); e != nil {
 				return e
@@ -424,6 +448,7 @@ func (c *Controller) schedule() error {
 		j.Stage = "running"
 		j.RunStartedAt = time.Now().UTC()
 		j.Role = role
+		c.panelEvent("agent-started", j.ID, role+" started")
 		if role == "executor" {
 			j.Session = j.ExecutorSession
 		}
@@ -455,12 +480,14 @@ func (c *Controller) wait(j *Job, question string) {
 	j.Question = question
 	j.QuestionMessage = 0
 	j.QuestionOrigin = "system"
+	c.panelEvent("blocked", j.ID, question)
 }
 func (c *Controller) finish(ctx context.Context, r RunResult) error {
 	j := c.State.Jobs[r.ID]
 	if j == nil {
 		return fmt.Errorf("unknown result")
 	}
+	c.panelEvent("agent-result", j.ID, r.Role+" returned a result")
 	if j.ClosedPR {
 		j.Stage = "closed"
 		return nil

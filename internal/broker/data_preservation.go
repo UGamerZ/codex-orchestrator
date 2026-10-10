@@ -12,9 +12,20 @@ var destructiveSQL = regexp.MustCompile(`(?is)\b(?:delete\s+from|truncate\s+(?:t
 
 func validateDataPreservationDiff(diff []byte) error {
 	var added strings.Builder
+	sqlFile := false
 	for _, line := range strings.Split(string(diff), "\n") {
+		if strings.HasPrefix(line, "+++ b/") {
+			sqlFile = strings.HasSuffix(strings.ToLower(line), ".sql")
+			continue
+		}
 		if strings.HasPrefix(line, "+++") || !strings.HasPrefix(line, "+") {
 			continue
+		}
+		if sqlFile {
+			trimmed := strings.TrimSpace(line[1:])
+			if strings.HasPrefix(trimmed, "--") || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
 		}
 		added.WriteString(line[1:])
 		added.WriteByte('\n')
