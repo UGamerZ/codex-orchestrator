@@ -81,6 +81,7 @@ func extractAgentLog(line []byte, secrets []string) (AgentLogEntry, bool) {
 			Role      string          `json:"role"`
 			Channel   string          `json:"channel"`
 			Name      string          `json:"name"`
+			Input     string          `json:"input"`
 			Arguments string          `json:"arguments"`
 			Output    json.RawMessage `json:"output"`
 			Message   string          `json:"message"`
@@ -96,16 +97,19 @@ func extractAgentLog(line []byte, secrets []string) (AgentLogEntry, bool) {
 	p := event.Payload
 	kind, text := "", ""
 	switch {
-	case event.Type == "response_item" && p.Type == "function_call":
+	case event.Type == "response_item" && (p.Type == "function_call" || p.Type == "custom_tool_call"):
 		kind = "tool call"
-		text = p.Name + "\n" + p.Arguments
-	case event.Type == "response_item" && p.Type == "function_call_output":
+		text = p.Name + "\n" + p.Arguments + p.Input
+	case event.Type == "response_item" && (p.Type == "function_call_output" || p.Type == "custom_tool_call_output"):
 		kind = "tool output"
 		if json.Unmarshal(p.Output, &text) != nil {
 			text = string(p.Output)
 		}
-	case event.Type == "response_item" && p.Type == "message" && p.Role == "assistant" && (p.Channel == "commentary" || p.Channel == "final"):
+	case event.Type == "response_item" && p.Type == "message" && p.Role == "assistant" && (p.Channel == "commentary" || p.Channel == "final" || p.Channel == ""):
 		kind = p.Channel
+		if kind == "" {
+			kind = "agent message"
+		}
 		for _, part := range p.Content {
 			if part.Type == "output_text" {
 				text += part.Text + "\n"

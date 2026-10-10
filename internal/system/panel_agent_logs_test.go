@@ -67,3 +67,15 @@ func TestQuotedLogSecretsAreRedacted(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomCodexToolEventsAreVisible(t *testing.T) {
+	for _, line := range []string{
+		`{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec_command","input":"run tests"}}`,
+		`{"type":"response_item","payload":{"type":"custom_tool_call_output","output":"tests passed"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Completed tests"}]}}`,
+	} {
+		if entry, ok := extractAgentLog([]byte(line), nil); !ok || entry.Text == "" {
+			t.Fatal("Codex event missing", line)
+		}
+	}
+}
