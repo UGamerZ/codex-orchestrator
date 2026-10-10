@@ -73,7 +73,7 @@ func (c *Controller) Run(ctx context.Context) error {
 			c.Runner.StopAbandoned(stopCtx)
 			return ctx.Err()
 		case r := <-c.Results:
-			if r.Err != nil {
+			if r.Err != nil && r.Err != errCardCompleted && c.State.Jobs[r.ID] != nil && !c.State.Jobs[r.ID].BoardCompleted {
 				c.reportPanelIssue(ctx, "Task ["+r.ID+"] "+r.Role, r.Err)
 			}
 			if e := c.finish(ctx, r); e != nil {
@@ -97,11 +97,18 @@ func (c *Controller) poll(ctx context.Context) error {
 	} else {
 		c.ChannelReady = true
 	}
+	if e := c.syncBoardCompletion(ctx); e != nil {
+		c.ChannelReady = false
+		return e
+	}
 	if e := c.discoverPRs(ctx); e != nil {
 		log.Printf("GitHub: %v", e)
 		c.reportPanelIssue(ctx, "GitHub polling", e)
 	}
 	for _, j := range c.State.Jobs {
+		if j.BoardCompleted {
+			continue
+		}
 		c.resumeFeedback(j)
 		if j.Stage == "waiting" && j.QuestionMessage != 0 && j.BlockedReminder.IsZero() {
 			j.BlockedReminder = time.Now().UTC()
@@ -113,6 +120,10 @@ func (c *Controller) poll(ctx context.Context) error {
 		}
 		if j.Card != "" && j.DoneMoved && !reviewComplete(j) && !j.ClosedPR {
 			if e := c.API.Move(ctx, j.Card, c.C.Progress); e != nil {
+				if e == errCardCompleted {
+					c.completeBoardTask(j)
+					continue
+				}
 				log.Printf("Trello return to In Progress: %v", e)
 				c.reportPanelIssue(ctx, "Trello return to In Progress", e)
 			} else {
@@ -121,6 +132,10 @@ func (c *Controller) poll(ctx context.Context) error {
 		}
 		if reviewComplete(j) && j.Card != "" && !j.DoneMoved {
 			if e := c.API.Move(ctx, j.Card, c.C.Done); e != nil {
+				if e == errCardCompleted {
+					c.completeBoardTask(j)
+					continue
+				}
 				log.Printf("Trello Done: %v", e)
 				c.reportPanelIssue(ctx, "Trello Done", e)
 			} else {
@@ -196,7 +211,7 @@ func (c *Controller) poll(ctx context.Context) error {
 	return nil
 }
 func reviewComplete(j *Job) bool {
-	return j.PR > 0 && j.Head != "" && j.Stage == "passed" && !j.FeedbackPending && j.ReviewedHead == j.Head && !j.ClosedPR
+	return j.PR > 0 && j.Head != "" && j.Stage == "passed" && !j.FeedbackPending && j.ReviewedHead == j.Head && !j.ClosedPR && !j.BoardCompleted
 }
 func (c *Controller) answers(ctx context.Context) error {
 	updates, e := c.API.Updates(ctx, c.State.TelegramOffset)
@@ -246,7 +261,7 @@ func (c *Controller) answers(ctx context.Context) error {
 					continue
 				}
 				for _, j := range c.State.Jobs {
-					if j.Stage == "waiting" && j.QuestionMessage == m.Reply.ID && j.QuestionMessage != 0 {
+					if !j.BoardCompleted && j.Stage == "waiting" && j.QuestionMessage == m.Reply.ID && j.QuestionMessage != 0 {
 						if len(j.Clarifications) == 0 && j.Answer != "" {
 							j.Clarifications = append(j.Clarifications, Clarification{Role: j.Role, Origin: "legacy", Answer: j.Answer})
 						}
@@ -291,6 +306,9 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 		open[p.Number] = true
 	}
 	for _, j := range c.State.Jobs {
+		if j.BoardCompleted {
+			continue
+		}
 		if j.PR > 0 && !open[j.PR] {
 			j.ClosedPR = true
 			if j.Stage != "running" && j.Stage != "publishing" {
@@ -314,6 +332,9 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 				j.Stage = "review"
 				break
 			}
+		}
+		if j != nil && j.BoardCompleted {
+			continue
 		}
 		if j == nil {
 			id := fmt.Sprintf("pr-%d", p.Number)
@@ -393,7 +414,7 @@ func (c *Controller) schedule() error {
 	sort.Strings(ids)
 	for _, id := range ids {
 		j := c.State.Jobs[id]
-		if j.ClosedPR {
+		if j.ClosedPR || j.BoardCompleted {
 			continue
 		}
 		if time.Now().Before(j.RetryAt) {
@@ -440,6 +461,9 @@ func (c *Controller) schedule() error {
 			e := c.API.Move(ctx, j.Card, c.C.Progress)
 			cancel()
 			if e != nil {
+				if e == errCardCompleted {
+					c.completeBoardTask(j)
+				}
 				log.Printf("cannot start task before card move: %v", e)
 				running--
 				continue
@@ -503,6 +527,11 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 	}
 	if r.Role == "manager" && r.Session != "" {
 		j.Session = r.Session
+	}
+	if j.BoardCompleted || r.Err == errCardCompleted {
+		c.completeBoardTask(j)
+		j.Stage = "completed"
+		return nil
 	}
 	if r.Err != nil {
 		if r.TimedOut {
@@ -606,6 +635,9 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 			seen[id] = true
 		}
 		for _, id := range v.Selected {
+			if allowed[id].BoardCompleted {
+				continue
+			}
 			if _, exists := c.State.Jobs[id]; !exists {
 				allowed[id].SystemCreated = true
 				c.State.Jobs[id] = allowed[id]

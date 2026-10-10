@@ -9,6 +9,7 @@ import (
 )
 
 type Job struct {
+	BoardCompleted       bool            `json:"board_completed,omitempty"`
 	DataGuardVersion     int             `json:"data_guard_version,omitempty"`
 	BlockedReminder      time.Time       `json:"blocked_reminder,omitempty"`
 	SystemCreated        bool            `json:"system_created,omitempty"`
@@ -92,6 +93,10 @@ func LoadState(dir string) (*State, error) {
 	}
 	// Never rerun a potentially live container after a controller crash. Ask the owner.
 	for _, j := range s.Jobs {
+		if j.BoardCompleted {
+			j.Stage = "completed"
+			continue
+		}
 		if j.Stage == "running" || j.Stage == "publishing" {
 			j.Stage = "waiting"
 			j.Question = "The controller restarted during processing. The interrupted task is paused. Reply to retry and continue."

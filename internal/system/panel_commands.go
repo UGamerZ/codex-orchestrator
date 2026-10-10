@@ -80,7 +80,7 @@ func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 		c.State.PendingConfig = cmd.Patch
 	case "retry", "answer":
 		j := c.State.Jobs[cmd.ID]
-		if j == nil || j.ClosedPR {
+		if j == nil || j.ClosedPR || j.BoardCompleted {
 			return fmt.Errorf("task unavailable")
 		}
 		if j.Stage == "running" || j.Stage == "publishing" {

@@ -147,6 +147,11 @@ func (r *Runner) Broker(ctx context.Context, j *Job, operation string) (broker.R
 	if e != nil {
 		return out, fmt.Errorf("GitHub credential unavailable")
 	}
+	if operation == "publish" {
+		if err := r.verifyPublicationCard(ctx, j); err != nil {
+			return broker.Result{}, err
+		}
+	}
 	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: publicationTitle(j)}
 	req.ExpectedHead = j.Head
 	req.AdoptTaskHead = operation == "prepare" && r.C.AutoContinueTasks && systemCreatedTask(j) && !j.External && j.Head != ""

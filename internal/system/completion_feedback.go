@@ -23,8 +23,8 @@ func (c *Controller) completionFeedback(ctx context.Context, m *TGMessage) (bool
 		if !completionReply(j, m.Reply) {
 			continue
 		}
-		if j.ClosedPR || j.Stage == "closed" {
-			_, err := c.API.Send(ctx, "This task's PR is closed. Create a new task for further changes; the closed branch will not be reopened automatically.")
+		if j.BoardCompleted || j.ClosedPR || j.Stage == "closed" {
+			_, err := c.API.Send(ctx, "This task is already completed or its PR is closed. Create a new task for further changes; the closed branch will not be reopened automatically.")
 			return true, err
 		}
 		j.Clarifications = append(j.Clarifications, Clarification{Role: "executor", Origin: "human-review", Question: "Human feedback on the completed task", Answer: m.Text, At: time.Now().UTC()})
@@ -43,7 +43,7 @@ func (c *Controller) resumeFeedback(j *Job) {
 	if !j.FeedbackPending || j.Stage == "running" || j.Stage == "publishing" {
 		return
 	}
-	if j.ClosedPR || j.Stage == "closed" {
+	if j.BoardCompleted || j.ClosedPR || j.Stage == "closed" {
 		j.FeedbackPending = false
 		return
 	}

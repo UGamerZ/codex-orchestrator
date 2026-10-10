@@ -200,12 +200,21 @@ func (a *API) trello(ctx context.Context, method, path string, values url.Values
 }
 func (a *API) Cards(ctx context.Context) ([]Card, error) {
 	var c []Card
-	e := a.trello(ctx, "GET", "boards/"+a.C.Board+"/cards", url.Values{"fields": {"name,desc,idList,closed"}}, &c)
+	e := a.trello(ctx, "GET", "boards/"+a.C.Board+"/cards", url.Values{"fields": {"name,desc,idList,closed"}, "filter": {"all"}}, &c)
 	return c, e
 }
 func (a *API) Move(ctx context.Context, card, list string) error {
 	if list != a.C.Progress && list != a.C.Done {
 		return fmt.Errorf("card destination forbidden")
+	}
+	if a.C.Board != "" {
+		current, err := a.CardLocation(ctx, card)
+		if err != nil {
+			return err
+		}
+		if cardOutsideLists(a.C, current) {
+			return errCardCompleted
+		}
 	}
 	return a.trello(ctx, "PUT", "cards/"+card, url.Values{"idList": {list}}, nil)
 }
@@ -316,4 +325,13 @@ func (a *API) Validate(ctx context.Context) error {
 		return fmt.Errorf("only private Telegram chat allowed: %s", strconv.FormatInt(a.C.Chat, 10))
 	}
 	return nil
+}
+
+func (a *API) CardLocation(ctx context.Context, id string) (Card, error) {
+	var card Card
+	err := a.trello(ctx, "GET", "cards/"+id, url.Values{"fields": {"id,idList,closed"}}, &card)
+	if err == nil && (card.ID != id || (!card.Closed && card.List == "")) {
+		return card, fmt.Errorf("invalid card location response")
+	}
+	return card, err
 }

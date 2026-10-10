@@ -1,1 +1,1 @@
-Add redacted agent log viewer
+Respect cards outside managed lists
