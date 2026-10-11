@@ -170,7 +170,8 @@ func (c *Controller) createEnvironment(input *EnvironmentInput) error {
 	c.panelEvent("environment", "", "Created environment: "+profile.Name)
 	return nil
 }
-func (c *Controller) switchEnvironment(id string) error {
+func (c *Controller) switchEnvironment(id string) error { return c.activateProfile(id, false) }
+func (c *Controller) activateProfile(id string, force bool) error {
 	if !environmentID.MatchString(id) {
 		return fmt.Errorf("invalid environment")
 	}
@@ -192,14 +193,14 @@ func (c *Controller) switchEnvironment(id string) error {
 		if r.Profiles[i].ID == id {
 			target = i
 		}
-		if r.Profiles[i].ID == r.Active {
+		if r.Profiles[i].ID == r.Active && !(force && r.Profiles[i].ID == id) {
 			r.Profiles[i].Config = c.C
 		}
 	}
 	if target < 0 {
 		return fmt.Errorf("environment not found")
 	}
-	if id == r.Active {
+	if id == r.Active && !force {
 		return nil
 	}
 	next, err := c.validateEnvironmentConfig(r.Profiles[target].Config)
@@ -296,7 +297,7 @@ func publicEnvironmentProfiles(configPath string) (map[string]any, error) {
 	}
 	profiles := []map[string]any{}
 	for _, p := range r.Profiles {
-		profiles = append(profiles, map[string]any{"id": p.ID, "name": p.Name, "project_mode": p.Config.ProjectMode, "repository": p.Config.Repository, "base_branch": p.Config.BaseBranch, "github_user": p.Config.GithubUser, "trello_board": p.Config.Board, "trello_todo": p.Config.Todo, "trello_progress": p.Config.Progress, "trello_done": p.Config.Done, "isolation_verified": p.IsolationVerified, "local_repository": p.Config.LocalRepository, "backend": p.Config.Backend, "worker_model": p.Config.WorkerModel, "worker_effort": p.Config.WorkerEffort, "fallback_model": p.Config.FallbackModel, "fallback_effort": p.Config.FallbackEffort, "manager_model": p.Config.ManagerModel, "reviewer_model": p.Config.ReviewerModel, "other_effort": p.Config.OtherEffort, "max_workers": p.Config.MaxWorkers, "max_fix_rounds": p.Config.MaxFixes, "run_timeout_minutes": p.Config.TimeoutMinutes, "manager_interval_seconds": p.Config.ManagerInterval})
+		profiles = append(profiles, map[string]any{"id": p.ID, "name": p.Name, "project_mode": p.Config.ProjectMode, "repository": p.Config.Repository, "base_branch": p.Config.BaseBranch, "github_user": p.Config.GithubUser, "trello_board": p.Config.Board, "trello_todo": p.Config.Todo, "trello_progress": p.Config.Progress, "trello_done": p.Config.Done, "isolation_verified": p.IsolationVerified, "local_repository": p.Config.LocalRepository, "backend": p.Config.Backend, "worker_model": p.Config.WorkerModel, "worker_effort": p.Config.WorkerEffort, "fallback_model": p.Config.FallbackModel, "fallback_effort": p.Config.FallbackEffort, "manager_model": p.Config.ManagerModel, "reviewer_model": p.Config.ReviewerModel, "other_effort": p.Config.OtherEffort, "auto_continue_task_branches": p.Config.AutoContinueTasks, "max_workers": p.Config.MaxWorkers, "max_fix_rounds": p.Config.MaxFixes, "run_timeout_minutes": p.Config.TimeoutMinutes, "manager_interval_seconds": p.Config.ManagerInterval})
 	}
 	return map[string]any{"active": r.Active, "profiles": profiles}, nil
 }

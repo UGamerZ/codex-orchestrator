@@ -64,10 +64,16 @@ func (c *Controller) handlePanelCommand(cmd PanelCommand) {
 	if err == nil {
 		err = c.save()
 	}
+	if err != nil {
+		c.panelEvent("operator-error", cmd.ID, cmd.Action+": "+err.Error())
+		c.save()
+	}
 	cmd.Result <- err
 }
 func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	switch cmd.Action {
+	case "environment-update":
+		return c.updateEnvironment(cmd.ID, cmd.Environment, cmd.Patch)
 	case "environment-create":
 		return c.createEnvironment(cmd.Environment)
 	case "environment-switch":

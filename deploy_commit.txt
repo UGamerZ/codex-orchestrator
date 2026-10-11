@@ -1,1 +1,1 @@
-Allow shared Trello environment lists
+Edit environments preserving previous setups

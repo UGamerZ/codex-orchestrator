@@ -15,3 +15,5 @@ environment-state/
 environment-controller.lock
 
 *.environment-validate*
+
+*.validate
