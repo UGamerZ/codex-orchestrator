@@ -110,9 +110,6 @@ func (c *Controller) createEnvironment(input *EnvironmentInput) error {
 		if strings.EqualFold(p.Name, strings.TrimSpace(input.Name)) {
 			return fmt.Errorf("environment name already exists")
 		}
-		if p.Config.Board == input.Board && p.Config.Todo == input.Todo {
-			return fmt.Errorf("each environment must use a different To Do list or board")
-		}
 	}
 	random := make([]byte, 8)
 	if _, err = rand.Read(random); err != nil {

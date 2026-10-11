@@ -74,8 +74,17 @@ func TestEnvironmentCreationSeparatesProjectAndStorage(t *testing.T) {
 	input.Name = "Other"
 	input.Board = c.C.Board
 	input.Todo = c.C.Todo
-	if err := c.createEnvironment(input); err == nil {
-		t.Fatal("duplicate task queue accepted")
+	input.Progress = c.C.Progress
+	input.Done = c.C.Done
+	if err := c.createEnvironment(input); err != nil {
+		t.Fatal("shared Trello lists rejected:", err)
+	}
+	r, err = readRegistry(c.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Profiles) != 3 || r.Active != "default" || r.Profiles[2].Config.StateDir == c.C.StateDir {
+		t.Fatal("shared board mixed profile state or changed active environment")
 	}
 	safe, err := publicEnvironmentProfiles(c.ConfigPath)
 	if err != nil {

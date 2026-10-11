@@ -1,1 +1,1 @@
-Show saved environment settings
+Allow shared Trello environment lists
