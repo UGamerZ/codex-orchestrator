@@ -299,7 +299,7 @@ func publicEnvironmentProfiles(configPath string) (map[string]any, error) {
 	}
 	profiles := []map[string]any{}
 	for _, p := range r.Profiles {
-		profiles = append(profiles, map[string]any{"id": p.ID, "name": p.Name, "project_mode": p.Config.ProjectMode, "repository": p.Config.Repository, "base_branch": p.Config.BaseBranch, "github_user": p.Config.GithubUser, "trello_board": p.Config.Board, "trello_todo": p.Config.Todo, "trello_progress": p.Config.Progress, "trello_done": p.Config.Done, "isolation_verified": p.IsolationVerified})
+		profiles = append(profiles, map[string]any{"id": p.ID, "name": p.Name, "project_mode": p.Config.ProjectMode, "repository": p.Config.Repository, "base_branch": p.Config.BaseBranch, "github_user": p.Config.GithubUser, "trello_board": p.Config.Board, "trello_todo": p.Config.Todo, "trello_progress": p.Config.Progress, "trello_done": p.Config.Done, "isolation_verified": p.IsolationVerified, "local_repository": p.Config.LocalRepository, "backend": p.Config.Backend, "worker_model": p.Config.WorkerModel, "worker_effort": p.Config.WorkerEffort, "fallback_model": p.Config.FallbackModel, "fallback_effort": p.Config.FallbackEffort, "manager_model": p.Config.ManagerModel, "reviewer_model": p.Config.ReviewerModel, "other_effort": p.Config.OtherEffort, "max_workers": p.Config.MaxWorkers, "max_fix_rounds": p.Config.MaxFixes, "run_timeout_minutes": p.Config.TimeoutMinutes, "manager_interval_seconds": p.Config.ManagerInterval})
 	}
 	return map[string]any{"active": r.Active, "profiles": profiles}, nil
 }
