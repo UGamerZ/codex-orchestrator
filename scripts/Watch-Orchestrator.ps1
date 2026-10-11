@@ -6,6 +6,8 @@ $settings=Get-Content -LiteralPath $Config -Raw -Encoding UTF8 | ConvertFrom-Jso
 $stateRoot=$settings.state_dir
 if (![IO.Path]::IsPathRooted($stateRoot)) { $stateRoot=Join-Path $projectRoot $stateRoot }
 $stateRoot=[IO.Path]::GetFullPath($stateRoot)
+New-Item -ItemType Directory -Path (Join-Path $stateRoot 'logs') -Force | Out-Null
+$installationLock=Join-Path $projectRoot 'environment-controller.lock'
 $watchLog=Join-Path $stateRoot 'watchdog.log'
 $notificationStamp=Join-Path $stateRoot 'watchdog-notified.txt'
 function Notify-Owner([string]$Message) {
@@ -28,6 +30,13 @@ if ($controller) {
  $statePath=Join-Path $stateRoot 'state.json'
  if ((Test-Path -LiteralPath $statePath) -and ((Get-Date)-(Get-Item -LiteralPath $statePath).LastWriteTime).TotalMinutes -gt 5) { Notify-Owner 'The orchestrator process is running, but its task state has not updated for over five minutes. Check the dashboard and controller connectivity. Active workers were not terminated.' }
  return
+}
+if (Test-Path -LiteralPath $installationLock) {
+ $installationId=0
+ if (![int]::TryParse((Get-Content -LiteralPath $installationLock -Raw).Trim(),[ref]$installationId)) { Notify-Owner 'Installation lock is invalid. Inspect it before restarting the controller.';return }
+ $installationProcess=Get-Process -Id $installationId -ErrorAction SilentlyContinue
+ if ($installationProcess) { Notify-Owner 'An installation controller still holds the environment registry. Automatic restart stopped to avoid duplicate workers.';return }
+ Remove-Item -LiteralPath $installationLock
 }
 Notify-Owner 'The orchestrator controller stopped. The watchdog is restarting it. Agent tasks recover only after worker cleanup; uncertain publications remain paused.'
 if (Test-Path -LiteralPath $lockPath) { Remove-Item -LiteralPath $lockPath }

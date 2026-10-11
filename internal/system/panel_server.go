@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func panelHandler(configPath, stateDir, token string, commands chan PanelCommand) http.Handler {
+func panelHandler(configPath, stateDir, token string, commands chan PanelCommand, logins ...*GitHubLoginSession) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.Host)
 		if err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1") {
@@ -41,9 +41,42 @@ func panelHandler(configPath, stateDir, token string, commands chan PanelCommand
 			http.Error(w, "Origin rejected", 403)
 			return
 		}
+		activeStateDir := stateDir
+		if b, err := os.ReadFile(configPath); err == nil {
+			var active Config
+			if json.Unmarshal(b, &active) == nil && active.StateDir != "" {
+				activeStateDir = active.StateDir
+			}
+		}
 		switch {
+		case r.URL.Path == "/api/environments" && r.Method == "GET":
+			profiles, err := publicEnvironmentProfiles(configPath)
+			if err != nil {
+				http.Error(w, "Environment registry unavailable", 503)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(profiles)
+		case r.URL.Path == "/api/github-accounts" && r.Method == "GET":
+			b, _ := os.ReadFile(configPath)
+			var active Config
+			json.Unmarshal(b, &active)
+			accounts, err := githubAccounts(active.GHPath)
+			if err != nil {
+				http.Error(w, err.Error(), 503)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(accounts)
+		case r.URL.Path == "/api/github-login" && r.Method == "GET":
+			status := GitHubLoginStatus{Status: "unavailable"}
+			if len(logins) > 0 && logins[0] != nil {
+				status = logins[0].Snapshot()
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(status)
 		case r.URL.Path == "/api/status" && r.Method == "GET":
-			data, e := os.ReadFile(filepath.Join(stateDir, "state.json"))
+			data, e := os.ReadFile(filepath.Join(activeStateDir, "state.json"))
 			if e != nil {
 				http.Error(w, "State unavailable", 503)
 				return
@@ -62,7 +95,7 @@ func panelHandler(configPath, stateDir, token string, commands chan PanelCommand
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(state)
 		case r.URL.Path == "/api/agent-logs" && r.Method == "GET":
-			logs, err := readAgentLogs(configPath, stateDir, r.URL.Query().Get("id"), r.URL.Query().Get("role"))
+			logs, err := readAgentLogs(configPath, activeStateDir, r.URL.Query().Get("id"), r.URL.Query().Get("role"))
 			if err != nil {
 				http.Error(w, "Log unavailable: "+err.Error(), 400)
 				return
@@ -71,7 +104,7 @@ func panelHandler(configPath, stateDir, token string, commands chan PanelCommand
 			json.NewEncoder(w).Encode(logs)
 		case r.URL.Path == "/api/activity" && r.Method == "GET":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(nativePanelActivity(configPath, stateDir))
+			json.NewEncoder(w).Encode(nativePanelActivity(configPath, activeStateDir))
 		case r.URL.Path == "/api/config" && r.Method == "GET":
 			data, e := os.ReadFile(configPath)
 			if e != nil {
@@ -125,7 +158,16 @@ func panelHandler(configPath, stateDir, token string, commands chan PanelCommand
 }
 
 func (c *Controller) StartPanel(ctx context.Context, address, configPath string) error {
+	absolute, err := filepath.Abs(configPath)
+	if err != nil {
+		return err
+	}
+	configPath = absolute
 	c.ConfigPath = configPath
+	if err := c.initializeEnvironments(); err != nil {
+		return err
+	}
+	c.Login = &GitHubLoginSession{path: c.C.GHPath, status: GitHubLoginStatus{Status: "idle"}}
 	c.Commands = make(chan PanelCommand, 32)
 	if address == "" {
 		return nil
@@ -143,7 +185,7 @@ func (c *Controller) StartPanel(ctx context.Context, address, configPath string)
 		listener.Close()
 		return err
 	}
-	server := &http.Server{Handler: panelHandler(configPath, c.C.StateDir, hex.EncodeToString(nonce), c.Commands), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 75 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Handler: panelHandler(configPath, c.C.StateDir, hex.EncodeToString(nonce), c.Commands, c.Login), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 75 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			fmt.Fprintln(os.Stderr, "Dashboard server stopped:", err)
@@ -153,6 +195,9 @@ func (c *Controller) StartPanel(ctx context.Context, address, configPath string)
 		<-ctx.Done()
 		stop, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		if c.Login != nil {
+			c.Login.Cancel()
+		}
 		server.Shutdown(stop)
 	}()
 	return nil

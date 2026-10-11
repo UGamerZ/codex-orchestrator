@@ -9,3 +9,9 @@ state/
 secrets/
 bin/
 *.exe
+
+environments.json*
+environment-state/
+environment-controller.lock
+
+*.environment-validate*

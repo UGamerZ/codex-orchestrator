@@ -11,6 +11,8 @@ import (
 )
 
 type Controller struct {
+	LockPath     string
+	Login        *GitHubLoginSession
 	Commands     chan PanelCommand
 	ConfigPath   string
 	ChannelReady bool
@@ -248,6 +250,15 @@ func (c *Controller) answers(ctx context.Context) error {
 					return e
 				}
 			} else if m.Reply != nil && strings.TrimSpace(m.Text) != "" {
+				if handled, err := c.routeInactiveAnswer(ctx, m); err != nil {
+					return err
+				} else if handled {
+					c.State.TelegramOffset = u.ID + 1
+					if err := c.save(); err != nil {
+						return err
+					}
+					continue
+				}
 				if handled, err := c.completionFeedback(ctx, m); err != nil {
 					return err
 				} else if handled {
@@ -391,7 +402,7 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 	return nil
 }
 func (c *Controller) schedule() error {
-	if !c.ChannelReady || c.State.Paused {
+	if !c.ChannelReady || c.State.Paused || (c.Login != nil && c.Login.Running()) {
 		return nil
 	}
 	running, reviewer, manager := 0, false, false

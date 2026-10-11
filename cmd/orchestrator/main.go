@@ -84,6 +84,11 @@ func run() error {
 		fmt.Println("Configuration and required access verified; no agents started.")
 		return nil
 	}
+	releaseInstallation, e := system.LockInstallation(*config)
+	if e != nil {
+		return e
+	}
+	defer releaseInstallation()
 	// Single instance per state directory. An unclean shutdown leaves this lock intentionally
 	// so an operator can first stop orphan containers instead of duplicating work.
 	lock, e := os.OpenFile(c.StateDir+string(os.PathSeparator)+"controller.lock", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -92,7 +97,8 @@ func run() error {
 	}
 	fmt.Fprint(lock, os.Getpid())
 	lock.Close()
-	defer os.Remove(lock.Name())
+	ctrl.LockPath = lock.Name()
+	defer ctrl.ReleaseControllerLock()
 	if e := ctrl.StartPanel(ctx, *web, *config); e != nil {
 		return e
 	}

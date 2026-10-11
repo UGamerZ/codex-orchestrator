@@ -16,11 +16,12 @@ type PanelEvent struct {
 	Message string    `json:"message"`
 }
 type PanelCommand struct {
-	Action string                     `json:"action"`
-	ID     string                     `json:"id"`
-	Text   string                     `json:"text"`
-	Patch  map[string]json.RawMessage `json:"patch"`
-	Result chan error                 `json:"-"`
+	Environment *EnvironmentInput          `json:"environment,omitempty"`
+	Action      string                     `json:"action"`
+	ID          string                     `json:"id"`
+	Text        string                     `json:"text"`
+	Patch       map[string]json.RawMessage `json:"patch"`
+	Result      chan error                 `json:"-"`
 }
 
 func (c *Controller) panelEvent(kind, id, message string) {
@@ -67,6 +68,23 @@ func (c *Controller) handlePanelCommand(cmd PanelCommand) {
 }
 func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	switch cmd.Action {
+	case "environment-create":
+		return c.createEnvironment(cmd.Environment)
+	case "environment-switch":
+		return c.switchEnvironment(cmd.ID)
+	case "github-login":
+		if !c.workersIdle() {
+			return fmt.Errorf("wait for active workers before signing in")
+		}
+		if c.Login == nil {
+			return fmt.Errorf("GitHub login unavailable")
+		}
+		return c.Login.Start()
+	case "github-login-cancel":
+		if c.Login != nil {
+			c.Login.Cancel()
+		}
+		return nil
 	case "check":
 		c.State.BoardCheckRequested = true
 	case "pause":
@@ -160,6 +178,10 @@ func (c *Controller) applyPendingConfig(ctx context.Context) {
 	}
 	if err != nil {
 		c.reportPanelIssue(ctx, "Configuration update", err)
+		return
+	}
+	if err := c.saveProfileConfiguration(next); err != nil {
+		c.reportPanelIssue(ctx, "Environment configuration persistence", err)
 		return
 	}
 	c.C = next
