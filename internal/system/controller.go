@@ -75,6 +75,9 @@ func (c *Controller) Run(ctx context.Context) error {
 			c.Runner.StopAbandoned(stopCtx)
 			return ctx.Err()
 		case r := <-c.Results:
+			if err := c.checkResultCard(ctx, c.State.Jobs[r.ID]); err != nil {
+				r.Err = err
+			}
 			if r.Err != nil && r.Err != errCardCompleted && c.State.Jobs[r.ID] != nil && !c.State.Jobs[r.ID].BoardCompleted {
 				c.reportPanelIssue(ctx, "Task ["+r.ID+"] "+r.Role, r.Err)
 			}
@@ -104,6 +107,7 @@ func (c *Controller) poll(ctx context.Context) error {
 		return e
 	}
 	if e := c.discoverPRs(ctx); e != nil {
+		c.ChannelReady = false
 		log.Printf("GitHub: %v", e)
 		c.reportPanelIssue(ctx, "GitHub polling", e)
 	}
@@ -344,7 +348,12 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 				break
 			}
 		}
-		if j != nil && j.BoardCompleted {
+		var skip bool
+		j, skip, e = c.reconcileDiscoveredPull(ctx, p, j)
+		if e != nil {
+			return e
+		}
+		if skip {
 			continue
 		}
 		if j == nil {

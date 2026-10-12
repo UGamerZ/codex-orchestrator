@@ -1,1 +1,1 @@
-Edit environments preserving previous setups
+Preserve completed tasks across environments
