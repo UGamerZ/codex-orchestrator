@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	ReviewTimeout     int    `json:"review_timeout_minutes"`
 	AutoContinueTasks bool   `json:"auto_continue_task_branches"`
 	ProjectMode       string `json:"project_mode"`
 	LocalRepository   string `json:"local_repository,omitempty"`
@@ -104,6 +105,15 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if c.MaxFixes < 1 || c.TimeoutMinutes < 1 || c.ManagerInterval < 3600 || c.PollSeconds < 5 {
 		return c, fmt.Errorf("invalid limits; board interval must be >=3600 seconds")
+	}
+	if c.ReviewTimeout == 0 {
+		c.ReviewTimeout = c.TimeoutMinutes
+		if c.ReviewTimeout > 15 {
+			c.ReviewTimeout = 15
+		}
+	}
+	if c.ReviewTimeout < 1 || c.ReviewTimeout > c.TimeoutMinutes {
+		return c, fmt.Errorf("review_timeout_minutes must be between 1 and run_timeout_minutes")
 	}
 	for _, model := range []string{c.WorkerModel, c.FallbackModel, c.ManagerModel, c.ReviewerModel} {
 		if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`).MatchString(model) {

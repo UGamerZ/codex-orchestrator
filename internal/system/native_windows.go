@@ -56,7 +56,7 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		result.Err = e
 		return result
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.C.TimeoutMinutes)*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), agentRunTimeout(r.C, role))
 	defer cancel()
 	p, e := r.nativePaths(j.ID)
 	if e != nil {
@@ -126,6 +126,13 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		return result
 	}
 	defer job.Close()
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Cancel = func() error {
+		if err := job.Terminate(); err != nil {
+			return cmd.Process.Kill()
+		}
+		return nil
+	}
 	if e = cmd.Start(); e != nil {
 		result.Err = fmt.Errorf("native CLI could not start")
 		return result

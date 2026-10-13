@@ -120,6 +120,11 @@ func panelHandler(configPath, stateDir, token string, commands chan PanelCommand
 				}
 			}
 			w.Header().Set("Content-Type", "application/json")
+			if _, exists := safe["review_timeout_minutes"]; !exists {
+				var cfg Config
+				json.Unmarshal(data, &cfg)
+				safe["review_timeout_minutes"] = json.RawMessage(fmt.Sprint(int(agentRunTimeout(cfg, "reviewer") / time.Minute)))
+			}
 			json.NewEncoder(w).Encode(safe)
 		case r.URL.Path == "/api/command" && r.Method == "POST":
 			var command PanelCommand

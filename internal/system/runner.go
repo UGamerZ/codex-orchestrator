@@ -230,7 +230,7 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 		return r.nativeRun(j, role, prompt)
 	}
 	result := RunResult{ID: j.ID, Role: role}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.C.TimeoutMinutes)*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), agentRunTimeout(r.C, role))
 	defer cancel()
 	if !safeID.MatchString(j.ID) {
 		result.Err = fmt.Errorf("invalid job ID")

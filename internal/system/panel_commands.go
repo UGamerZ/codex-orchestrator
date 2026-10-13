@@ -142,7 +142,7 @@ func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	return nil
 }
 
-var panelFields = map[string]bool{"worker_model": true, "worker_effort": true, "fallback_model": true, "fallback_effort": true, "manager_model": true, "reviewer_model": true, "other_effort": true, "max_workers": true, "max_fix_rounds": true, "run_timeout_minutes": true, "manager_interval_seconds": true, "auto_continue_task_branches": true}
+var panelFields = map[string]bool{"worker_model": true, "worker_effort": true, "fallback_model": true, "fallback_effort": true, "manager_model": true, "reviewer_model": true, "other_effort": true, "max_workers": true, "max_fix_rounds": true, "run_timeout_minutes": true, "review_timeout_minutes": true, "manager_interval_seconds": true, "auto_continue_task_branches": true}
 
 func (c *Controller) validatedPanelConfig(patch map[string]json.RawMessage) (Config, error) {
 	b, _ := json.Marshal(c.C)

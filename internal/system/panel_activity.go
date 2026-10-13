@@ -82,7 +82,7 @@ func nativePanelActivity(configPath, stateDir string) map[string]PanelActivity {
 				continue
 			}
 			want := filepath.Join(config.NativeRoot, "jobs", j.ID, "workspace")
-			if strings.EqualFold(filepath.Clean(meta.Payload.CWD), filepath.Clean(want)) && (j.RunStartedAt.IsZero() || !file.at.Before(j.RunStartedAt)) {
+			if strings.EqualFold(filepath.Clean(meta.Payload.CWD), filepath.Clean(want)) && (j.RunStartedAt.IsZero() || !file.at.Before(j.RunStartedAt) || meta.Payload.ID == j.ReviewerSession || meta.Payload.ID == j.ExecutorSession || meta.Payload.ID == j.Session) {
 				job = j
 				break
 			}
@@ -106,8 +106,9 @@ func nativePanelActivity(configPath, stateDir string) map[string]PanelActivity {
 		scanner.Buffer(make([]byte, 4096), 65536)
 		for scanner.Scan() {
 			var event struct {
-				Type    string `json:"type"`
-				Payload struct {
+				Type      string    `json:"type"`
+				Timestamp time.Time `json:"timestamp"`
+				Payload   struct {
 					Type string `json:"type"`
 					Name string `json:"name"`
 				} `json:"payload"`
@@ -115,12 +116,15 @@ func nativePanelActivity(configPath, stateDir string) map[string]PanelActivity {
 			if json.Unmarshal(scanner.Bytes(), &event) != nil {
 				continue
 			}
+			if event.Timestamp.After(activity.LastActivity) {
+				activity.LastActivity = event.Timestamp
+			}
 			switch event.Payload.Type {
-			case "function_call":
+			case "function_call", "custom_tool_call":
 				activity.Event = "Tool: " + clip(event.Payload.Name, 80)
-			case "function_call_output":
+			case "function_call_output", "custom_tool_call_output":
 				activity.Event = "Tool result received"
-			case "agent_message":
+			case "agent_message", "message":
 				activity.Event = "Agent message"
 			case "reasoning":
 				activity.Event = "Reasoning"

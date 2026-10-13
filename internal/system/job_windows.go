@@ -9,6 +9,7 @@ import (
 var jobDLL = syscall.NewLazyDLL("kernel32.dll")
 var createJob = jobDLL.NewProc("CreateJobObjectW")
 var setJob = jobDLL.NewProc("SetInformationJobObject")
+var terminateJob = jobDLL.NewProc("TerminateJobObject")
 var assignJob = jobDLL.NewProc("AssignProcessToJobObject")
 var snapshotThreads = jobDLL.NewProc("CreateToolhelp32Snapshot")
 var firstThread = jobDLL.NewProc("Thread32First")
@@ -102,4 +103,12 @@ func (j *windowsJob) Close() {
 		syscall.CloseHandle(j.handle)
 		j.handle = 0
 	}
+}
+
+func (j *windowsJob) Terminate() error {
+	ok, _, err := terminateJob.Call(uintptr(j.handle), 1)
+	if ok == 0 {
+		return fmt.Errorf("terminate native process job: %w", err)
+	}
+	return nil
 }
