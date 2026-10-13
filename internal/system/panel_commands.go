@@ -72,6 +72,8 @@ func (c *Controller) handlePanelCommand(cmd PanelCommand) {
 }
 func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	switch cmd.Action {
+	case "environment-delete":
+		return c.deleteEnvironment(cmd.ID)
 	case "environment-update":
 		return c.updateEnvironment(cmd.ID, cmd.Environment, cmd.Patch)
 	case "environment-create":

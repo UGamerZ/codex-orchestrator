@@ -15,6 +15,7 @@ import (
 )
 
 type EnvironmentProfile struct {
+	Deleted           bool   `json:"deleted,omitempty"`
 	ID                string `json:"id"`
 	Name              string `json:"name"`
 	Config            Config `json:"config"`
@@ -70,7 +71,7 @@ func (c *Controller) initializeEnvironments() error {
 	}
 	found := false
 	for i := range r.Profiles {
-		if filepath.Clean(r.Profiles[i].Config.StateDir) == filepath.Clean(c.C.StateDir) {
+		if !r.Profiles[i].Deleted && filepath.Clean(r.Profiles[i].Config.StateDir) == filepath.Clean(c.C.StateDir) {
 			r.Active = r.Profiles[i].ID
 			r.Profiles[i].Config = c.C
 			found = true
@@ -107,7 +108,7 @@ func (c *Controller) createEnvironment(input *EnvironmentInput) error {
 		return err
 	}
 	for _, p := range r.Profiles {
-		if strings.EqualFold(p.Name, strings.TrimSpace(input.Name)) {
+		if !p.Deleted && strings.EqualFold(p.Name, strings.TrimSpace(input.Name)) {
 			return fmt.Errorf("environment name already exists")
 		}
 	}
@@ -190,7 +191,7 @@ func (c *Controller) activateProfile(id string, force bool) error {
 	}
 	target := -1
 	for i := range r.Profiles {
-		if r.Profiles[i].ID == id {
+		if r.Profiles[i].ID == id && !r.Profiles[i].Deleted {
 			target = i
 		}
 		if r.Profiles[i].ID == r.Active && !(force && r.Profiles[i].ID == id) {
@@ -297,6 +298,9 @@ func publicEnvironmentProfiles(configPath string) (map[string]any, error) {
 	}
 	profiles := []map[string]any{}
 	for _, p := range r.Profiles {
+		if p.Deleted {
+			continue
+		}
 		profiles = append(profiles, map[string]any{"id": p.ID, "name": p.Name, "project_mode": p.Config.ProjectMode, "repository": p.Config.Repository, "base_branch": p.Config.BaseBranch, "github_user": p.Config.GithubUser, "trello_board": p.Config.Board, "trello_todo": p.Config.Todo, "trello_progress": p.Config.Progress, "trello_done": p.Config.Done, "isolation_verified": p.IsolationVerified, "local_repository": p.Config.LocalRepository, "backend": p.Config.Backend, "worker_model": p.Config.WorkerModel, "worker_effort": p.Config.WorkerEffort, "fallback_model": p.Config.FallbackModel, "fallback_effort": p.Config.FallbackEffort, "manager_model": p.Config.ManagerModel, "reviewer_model": p.Config.ReviewerModel, "other_effort": p.Config.OtherEffort, "auto_continue_task_branches": p.Config.AutoContinueTasks, "max_workers": p.Config.MaxWorkers, "max_fix_rounds": p.Config.MaxFixes, "run_timeout_minutes": p.Config.TimeoutMinutes, "review_timeout_minutes": int(agentRunTimeout(p.Config, "reviewer") / time.Minute), "manager_interval_seconds": p.Config.ManagerInterval})
 	}
 	return map[string]any{"active": r.Active, "profiles": profiles}, nil
@@ -323,6 +327,19 @@ func (c *Controller) routeInactiveAnswer(ctx context.Context, m *TGMessage) (boo
 		}
 		var state State
 		if json.Unmarshal(b, &state) != nil {
+			continue
+		}
+		if p.Deleted {
+			for _, j := range state.Jobs {
+				matched := j.QuestionMessage == m.Reply.ID
+				for _, message := range j.CompletionMessages {
+					matched = matched || message == m.Reply.ID
+				}
+				if matched {
+					_, err = c.API.Send(ctx, "This task belongs to a deleted environment: "+p.Name+". Its files and history are retained, but replies cannot restart its agents.")
+					return true, err
+				}
+			}
 			continue
 		}
 		inactive := &Controller{C: p.Config, API: c.API, State: &state}

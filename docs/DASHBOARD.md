@@ -67,3 +67,9 @@ PR discovery restores Trello card links from the system task branch or the PR de
 Reviewer runs have a separate **review timeout minutes** setting (15 minutes by default, capped by the general run deadline). It can be edited in Configuration or the environment editor. A deadline terminates the entire native Windows process job before retrying, including children holding output pipes; output-reader shutdown is bounded. Existing retry limits and session preservation apply. Last activity uses session event timestamps, including current code-mode tool events, and remains visible for resumed sessions.
 
 When switching native Windows environments, the orchestrator automatically reruns isolation checks if the saved check is missing or predates the installed Codex CLI. The current environment stays selected if verification fails.
+
+## Delete saved environments
+
+Click **Delete environment** on an inactive profile and confirm the removal. Switch to another environment first to delete the current one. A locked environment or one with unfinished active agents/publication cannot be removed.
+
+Deletion removes the profile from the dashboard and prevents activation, editing, and agent restarts from old Telegram replies. Working files, local Git history, logs, task records, GitHub repositories, and account logins are retained. A private ownership record stays in the registry so existing PRs are not rediscovered as new tasks in another environment. You can reuse the deleted environment's name when creating a new profile.

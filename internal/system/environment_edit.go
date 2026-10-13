@@ -28,6 +28,9 @@ func (c *Controller) updateEnvironment(id string, input *EnvironmentInput, patch
 	}
 	index := -1
 	for i, p := range r.Profiles {
+		if p.Deleted {
+			continue
+		}
 		if p.ID == id {
 			index = i
 		} else if strings.EqualFold(p.Name, strings.TrimSpace(input.Name)) {
