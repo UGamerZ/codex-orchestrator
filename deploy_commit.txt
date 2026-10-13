@@ -1,1 +1,1 @@
-Bound reviewer runs and shutdown
+Refresh environment isolation on switching

@@ -230,9 +230,9 @@ func (c *Controller) activateProfile(id string, force bool) error {
 	if err = api.Validate(ctx); err != nil {
 		return err
 	}
-	if next.Backend == "native-windows" && !r.Profiles[target].IsolationVerified {
+	if environmentNeedsIsolationCheck(r.Profiles[target]) {
 		if err = VerifyNativeIsolation(ctx, next); err != nil {
-			return fmt.Errorf("new environment isolation check failed: %w", err)
+			return fmt.Errorf("environment isolation check failed: %w", err)
 		}
 		r.Profiles[target].IsolationVerified = true
 	}

@@ -26,24 +26,8 @@ func (r *Runner) nativePreflight(ctx context.Context) error {
 	if !r.C.NativeVerified {
 		return fmt.Errorf("native isolation has not been verified")
 	}
-	b, e := os.ReadFile(filepath.Join(r.C.NativeRoot, "isolation.json"))
-	if e != nil {
-		return fmt.Errorf("native isolation receipt missing; run Check-NativeIsolation.ps1")
-	}
-	var receipt struct {
-		Version int    `json:"version"`
-		Codex   string `json:"codex_sha256"`
-	}
-	if json.Unmarshal(b, &receipt) != nil || receipt.Version != 2 {
-		return fmt.Errorf("invalid isolation receipt")
-	}
-	cli, e := os.ReadFile(r.C.CodexPath)
-	if e != nil {
+	if e := validateNativeIsolationReceipt(r.C); e != nil {
 		return e
-	}
-	sum := sha256.Sum256(cli)
-	if receipt.Codex != hex.EncodeToString(sum[:]) {
-		return fmt.Errorf("Codex binary changed; rerun native isolation check")
 	}
 	if e := prepareNativeAuth(r.C.AuthFile, r.nativeRuntime()); e != nil {
 		return e
