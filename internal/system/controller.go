@@ -263,14 +263,14 @@ func (c *Controller) answers(ctx context.Context) error {
 					}
 					continue
 				}
-				if handled, err := c.completionFeedback(ctx, m); err != nil {
+				if handled, acknowledgment, err := c.completionFeedback(ctx, m); err != nil {
 					return err
 				} else if handled {
 					c.State.TelegramOffset = u.ID + 1
 					if err := c.save(); err != nil {
 						return err
 					}
-					if _, err := c.API.Send(ctx, "Your feedback was received and retained for this task. Open system-owned tasks return to In Progress for changes and another review. Replies to closed PRs cannot reopen them."); err != nil {
+					if _, err := c.API.Send(ctx, acknowledgment); err != nil {
 						log.Printf("feedback acknowledgment: %v", err)
 					}
 					continue

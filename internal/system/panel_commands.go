@@ -104,6 +104,29 @@ func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 			return err
 		}
 		c.State.PendingConfig = cmd.Patch
+	case "feedback":
+		j := c.State.Jobs[cmd.ID]
+		if j == nil || strings.TrimSpace(cmd.Text) == "" {
+			return fmt.Errorf("a known reviewed task and feedback text are required")
+		}
+		reply := &TGMessage{Text: "Review complete: no issues found.\n" + j.Title + "\n" + j.PRURL + "\n\n"}
+		for _, id := range j.CompletionMessages {
+			if id != 0 {
+				reply.ID = id
+				break
+			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		handled, acknowledgment, err := c.completionFeedback(ctx, &TGMessage{Text: cmd.Text, Reply: reply})
+		if err != nil {
+			return err
+		}
+		if !handled {
+			return fmt.Errorf("review completion notification unavailable for this task")
+		}
+		c.panelEvent("feedback", cmd.ID, acknowledgment)
+		return nil
 	case "retry", "answer":
 		j := c.State.Jobs[cmd.ID]
 		if j == nil || j.ClosedPR || j.BoardCompleted {

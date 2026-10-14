@@ -62,7 +62,7 @@ The controller moves selected cards to **In Progress** while the executors work.
 
 Findings return to the original executor's session and branch. Automatic fixes run for three rounds by default; continuing beyond the limit requires a human reply. Questions about genuine ambiguities or missing resources are sent immediately, while routine implementation choices remain autonomous.
 
-A new, unreviewed revision returns an open task to In Progress. Move a card to **Merged**, archive it, or put it in any list outside To Do / In Progress / Done to take it out of the managed workflow. Later PR updates do not reopen those completed cards. People merge changes and archive cards themselves.
+A new, unreviewed revision returns an open task to In Progress. Move a card to **Merged**, archive it, or put it in any list outside To Do / In Progress / Done to take it out of the managed workflow. Later PR updates do not reopen those completed cards. People merge changes and archive cards themselves. To request further work on an open PR, explicitly return its card to a managed list and reply to its **Review complete** notification.
 
 ## Getting started
 

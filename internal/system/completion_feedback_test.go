@@ -10,6 +10,9 @@ import (
 func TestCompletionFeedbackRoutesLegacyAndNewNotifications(t *testing.T) {
 	for _, legacy := range []bool{false, true} {
 		c := fixture(t)
+		c.API.ghTransport = func(context.Context, ...string) ([]byte, error) {
+			return []byte(`{"number":7,"state":"open","head":{"sha":"abc"}}`), nil
+		}
 		j := &Job{ID: "task", Title: "Task", PR: 7, PRURL: "https://github.com/o/r/pull/7", Stage: "passed", Role: "reviewer", Head: "abc", ReviewedHead: "abc", NotifiedHead: "abc", DoneMoved: true, BaseSHA: "base", ExecutorSession: "original", CompletionMessages: []int64{42}}
 		c.State.Jobs[j.ID] = j
 		reply := &TGMessage{ID: 42}
@@ -46,6 +49,9 @@ func TestCompletionFeedbackRoutesLegacyAndNewNotifications(t *testing.T) {
 
 func TestFeedbackDoesNotRaceActiveWorkerOrAuthorizeExternalWrites(t *testing.T) {
 	c := fixture(t)
+	c.API.ghTransport = func(context.Context, ...string) ([]byte, error) {
+		return []byte(`{"number":7,"state":"open","head":{"sha":"abc"}}`), nil
+	}
 	j := &Job{ID: "task", Stage: "running", Role: "reviewer", Head: "abc", ReviewedHead: "abc", FeedbackPending: true}
 	c.resumeFeedback(j)
 	if j.Stage != "running" || !j.FeedbackPending || reviewComplete(j) {

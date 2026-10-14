@@ -342,15 +342,17 @@ func (c *Controller) routeInactiveAnswer(ctx context.Context, m *TGMessage) (boo
 			}
 			continue
 		}
-		inactive := &Controller{C: p.Config, API: c.API, State: &state}
-		if handled, feedbackErr := inactive.completionFeedback(ctx, m); handled {
+		inactiveAPI := *c.API
+		inactiveAPI.C = p.Config
+		inactive := &Controller{C: p.Config, API: &inactiveAPI, State: &state}
+		if handled, acknowledgment, feedbackErr := inactive.completionFeedback(ctx, m); handled {
 			if feedbackErr != nil {
 				return true, feedbackErr
 			}
 			if err = state.Save(p.Config.StateDir); err != nil {
 				return true, err
 			}
-			_, err = c.API.Send(ctx, "Feedback retained for inactive environment: "+p.Name+". Switch to that environment to continue its task.")
+			_, err = c.API.Send(ctx, "Environment: "+p.Name+". "+acknowledgment+" This environment is inactive; agents run only when it is selected.")
 			return true, err
 		}
 		for _, j := range state.Jobs {

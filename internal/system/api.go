@@ -61,6 +61,8 @@ func withoutEnv(env []string, keys ...string) []string {
 }
 
 type Pull struct {
+	State  string `json:"state"`
+	Merged bool   `json:"merged"`
 	Number int    `json:"number"`
 	URL    string `json:"html_url"`
 	Title  string `json:"title"`
@@ -78,6 +80,20 @@ type Pull struct {
 	} `json:"base"`
 }
 
+func (a *API) Pull(ctx context.Context, number int) (Pull, error) {
+	var p Pull
+	b, err := a.gh(ctx, "api", fmt.Sprintf("repos/%s/pulls/%d", a.C.Repository, number), "-H", "Cache-Control: no-cache")
+	if err != nil {
+		return p, err
+	}
+	if err = json.Unmarshal(b, &p); err != nil {
+		return p, err
+	}
+	if p.Number != number || (p.State != "open" && p.State != "closed") {
+		return p, fmt.Errorf("invalid PR status response")
+	}
+	return p, nil
+}
 func (a *API) Pulls(ctx context.Context) ([]Pull, error) {
 	if a.C.ProjectMode == "local" {
 		return a.localReviews(ctx)
