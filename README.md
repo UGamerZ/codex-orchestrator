@@ -1,224 +1,308 @@
-# Codex Orchestrator
+<div align="center">
 
-**English** | [Русский](docs/ru/README.md)
+<h1>Codex Orchestrator</h1>
 
-A general-purpose, isolated environment for handling Trello tasks with Codex CLI.
-Use local projects with local branches and reviews, or GitHub repositories with pull
-requests. Choose the project, base branch, account, models, and integrations during
-setup. The account that owns this orchestrator does not determine the project account.
+<p><strong>Trello tasks. Isolated Codex agents. Reviewed changes.</strong></p>
 
-Start with `scripts/Configure-Project.ps1` and the [project setup guide](PROJECT-SETUP.md).
-Choose Docker or the [restricted Windows installation](NATIVE-INSTALL.md).
-Configure integrations and verify isolation before starting task processing.
+<p>A self-hosted workspace for turning a task queue into GitHub pull requests or locally reviewed Git branches.</p>
 
-Workflow edits require an explicit human decision for that task. The executor asks a question beginning `May I add or modify a file in .github/workflows`, followed by the purpose. Reply `yes`, `yes, u can`, `yes, you can`, `go ahead`, or `да, разрешаю` directly to that question in Telegram. The trusted publisher checks that saved reply independently; approval does not grant other tasks permission, base-branch writes, force pushes, GitHub Approve, or merging.
+<p>
+  <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&amp;logoColor=white" alt="Go 1.26 or later">
+  <img src="https://img.shields.io/badge/Powered_by-Codex_CLI-222222" alt="Powered by Codex CLI">
+  <img src="https://img.shields.io/badge/Deployment-Self--hosted-4051B5" alt="Self-hosted deployment">
+</p>
 
-## Task reference materials
+<p>
+  <a href="#getting-started">Getting started</a> &nbsp;·&nbsp;
+  <a href="#how-it-works">How it works</a> &nbsp;·&nbsp;
+  <a href="#isolation-and-permissions">Isolation</a> &nbsp;·&nbsp;
+  <a href="docs/DASHBOARD.md">Dashboard guide</a> &nbsp;·&nbsp;
+  <a href="docs/ru/README.md">Русский</a>
+</p>
 
-Documentation-only PRs receive a review focused on factual accuracy, essential usage
-steps, and the intended audience. Wording preferences, optional technical detail, and
-pre-existing implementation defects do not require another documentation fix.
-Actual code changes continue to receive the full code review.
+</div>
 
-Before each executor or reviewer run, the trusted service downloads files attached
-to the Trello card and HTTPS links in its description and supplied answer. Trello
-download authentication stays on the host; agents receive only local files and a
-manifest. Open local pictures with the image-viewing tool. Failed downloads are
-listed in the manifest so the agent can ask about the specific missing resource.
-Public HTTPS links are supported; other private services need separately supplied
-files. Downloads reject private-network destinations and credential forwarding.
-Limits are 32 files, 16 MiB per file, and 64 MiB of attachments per task.
+---
 
-The same read-only context includes `branches.git`, an offline repository containing
-the selected project's branches and their history, plus `branches.txt` with commit
-IDs. Inspect other branches with Git `show`, `log`, or `diff`, then apply task-relevant
-changes in the task workspace. The reference repository has no remote or credentials,
-is protected from writes, and is excluded from published changes. Publication remains
-limited to the task's own `codex/<card-id>` branch. The branch bundle limit is 512 MiB.
+Keep your tasks in Trello, let Codex work in separate branches, and follow progress from a local dashboard or Telegram. Executors implement changes, reviewers check the current commit, and the controller handles publication through a restricted Git broker.
 
-In Docker these materials are mounted read-only at `/review-input/context`. On
-Windows they are read-only under the workspace's `.orchestrator-review/context`.
+Use an existing GitHub repository, start a new project, or work entirely with local Git branches and review records. The system is independent of any particular repository, base branch, or GitHub account.
 
-## Workflow
+> **You keep the merge decision.** An internal review can mark a task Done, but agents cannot submit GitHub Approve reviews, merge pull requests, force-push, or publish to the base branch. These operations are excluded from the system's capabilities.
 
-1. People manually add cards to the dedicated board's **To Do** list.
-2. Once an hour, the manager selects up to two independent tasks.
-   A successful move to Done also triggers an immediate To Do check, preserving
-   the hourly schedule and executor limits. If the manager is busy, the request waits.
-   A card title can be the complete specification; an empty description is not a blocker.
-3. The controller moves cards to **In Progress**. At most two executors run at once.
-4. Each executor works in a new `codex/<card-id>` branch.
-5. The trusted Git broker commits the changes and publishes only the task branch.
-   GitHub mode creates a PR targeting the configured base branch; local mode saves a
-   local branch and creates a local review record. The card stays **In Progress**.
-6. A reviewer checks the exact commit SHA using a read-only working copy. Findings
-   become PR comments or local review files. **Reviewers cannot submit GitHub Approve
-   or merge:** the controller exposes neither operation, and agents have no GitHub credentials.
-7. Findings return to the original executor's session, branch, and review.
-   Automatic fixes continue for up to three rounds by default. A human reply is
-   required to authorize another round.
-8. Telegram sends completion notifications only after the internal reviewer finds
-   no issues. Clarification questions and requests for missing resources are sent immediately.
-   Only a successful review of the current commit moves the card to **Done**.
-   A new unreviewed revision returns it to **In Progress**. People archive cards manually.
+## What you get
 
-Default models are `gpt-6.1-sol / low` for executors, `gpt-6-sol / medium` as the
-fallback, and `gpt-6-luna / low` for managers and reviewers. These defaults are
-configurable. Fallback is used only when the primary model is explicitly unavailable,
-never to bypass subscription limits. A rate limit delays the next attempt by an hour.
+| Capability | What it does |
+| --- | --- |
+| **Trello-driven work** | Checks To Do hourly and again when a task reaches Done. A clear card title can be the entire specification. |
+| **Parallel executors** | Runs up to two executors, each with its own task branch and workspace. |
+| **Review and automatic fixes** | Reviews the exact commit, returns findings to the executor, and repeats within a configurable fix limit. |
+| **Operator dashboard** | Shows task states, blockers, agent activity, filtered logs, configuration, and manual controls. |
+| **Telegram conversations** | Routes replies to the agent that asked the question and sends completion messages after internal review passes. |
+| **Multiple environments** | Adds, views, edits, switches, and removes saved project setups, with a GitHub account selected for each project. |
+| **Local Git mode** | Saves task branches and review records without requiring GitHub or creating pull requests. |
+| **Task references** | Supplies linked images, attached files, and other project branches as local, read-only context. |
+| **Recovery controls** | Retries interrupted or timed-out agent runs within limits, retaining workspaces and known sessions. |
+| **Two execution backends** | Uses isolated Docker containers or a restricted native Windows environment. |
 
-Open PRs targeting the configured base branch are also discovered and reviewed.
-External PRs receive comments; automatic fixes apply only to system-created tasks.
-A human update to a system-owned branch stops automatic publication and requests a
-decision. Closed PRs receive no further runs.
+## How it works
 
-## Docker isolation
+```mermaid
+flowchart LR
+    Todo["Trello: To Do"] --> Manager["Manager"]
+    Manager --> Executor["Executor: task branch"]
+    Executor --> Changes["Pull request or local branch"]
+    Changes --> Review{"Internal review"}
+    Review -->|Findings| Executor
+    Review -->|Current commit passes| Done["Trello: Done"]
+    Done --> Telegram["Telegram notification"]
+```
 
-Agent working copies stay inside Docker; the host project directory is not mounted.
-Each task has named volumes for its working copy, private publisher repository, review
-materials, and each role's Codex state. With WSL, volumes reside on the Docker/WSL
-virtual disk. Moving storage to another physical disk requires moving the Docker data
-root or WSL disk separately.
+The controller moves selected cards to **In Progress** while the executors work. Creating a PR does not complete the task: **Done requires an internal review with no findings on the current commit**.
 
-Agents run as UID 1000 with capabilities dropped, `no-new-privileges`, a read-only
-root filesystem, and RAM/CPU/process limits. They receive no Docker socket, host bind
-mounts, integration tokens, or remote Git configuration. Reviewer and manager working
-copies are mounted read-only. Containers join only the Docker internal network.
+Findings return to the original executor's session and branch. Automatic fixes run for three rounds by default; continuing beyond the limit requires a human reply. Questions about genuine ambiguities or missing resources are sent immediately, while routine implementation choices remain autonomous.
 
-The sole outbound route is a CONNECT proxy allowing exactly `chatgpt.com:443`,
-`api.openai.com:443`, and `auth.openai.com:443`. It rejects private addresses, other
-ports, redirects, and other domains. Firewall rules block Linux host services and
-neighboring agents. External DNS is disabled; the proxy address is explicit.
-The controller checks the rules before each run. Reapply `scripts/network-policy.sh`
-after restarting Docker. Prepare dependencies in the image; an agent asks a human
-when dependencies, data, or access are missing.
+A new, unreviewed revision returns an open task to In Progress. Move a card to **Merged**, archive it, or put it in any list outside To Do / In Progress / Done to take it out of the managed workflow. Later PR updates do not reopen those completed cards. People merge changes and archive cards themselves.
 
-Codex CLI uses `danger-full-access` **only inside these containers**, where Docker,
-read-only mounts, and network policy provide the boundary. Host-native execution does
-not use that setting. Agents can access their selected ChatGPT credentials to reach
-the model. Apps, plugins, hooks, browser tools, and built-in delegation are disabled.
-Integration credentials stay with the trusted controller and Git broker.
-Containers share the Linux kernel and do not replace a separate VM against kernel exploits.
+## Getting started
 
-The trusted Git broker never executes project code, hooks, or agent-supplied commands.
-It ignores the agent's `.git`, copies ordinary files into its own repository, and
-makes fast-forward pushes to `codex/...` only. Base-branch writes, force pushes,
-Approve, and merge are not exposed. Existing tracked relative symlinks are preserved
-only when their complete target chain stays inside the working copy and does not
-reference Git metadata. New or modified links, submodules, and `.github/workflows`
-changes require separate human preparation. The broker receives the GitHub token
-over stdin, not through command arguments, persistent volumes, or the agent environment.
+### 1. Prepare the prerequisites
 
-## Required access
+| Requirement | Used for |
+| --- | --- |
+| **Go 1.26+ and Git** | Building the controller and managing project history. |
+| **Codex CLI with a ChatGPT login** | Running agents. API-key authentication is not accepted by this project. |
+| **Trello API key and token** | Reading cards and moving them between the configured lists. |
+| **Telegram bot token and private chat ID** | Questions, replies, and notifications. |
+| **GitHub CLI** | GitHub mode only; sign in to an account with access to the selected repository. |
+| **An execution backend** | Docker with Linux containers, or Windows with an elevated Codex sandbox. |
 
-- **GitHub mode:** GitHub CLI authentication for the selected project account, with
-  repository read/write access and permission to create PRs and comments. Setup
-  verifies the account and access. The controller explicitly selects
-  `gh auth token --user <github_user>`, regardless of the active CLI account.
-  Local mode does not use GitHub.
-- **Trello:** an API key, a read/write token for the dedicated board, its board ID,
-  and distinct list IDs for To Do, In Progress, and Done.
-- **Telegram:** a dedicated bot token and your private chat ID after sending `/start`.
-  The service uses `getUpdates`; do not share the bot with another poller or webhook.
-- **Codex:** the selected ChatGPT login in `secrets/auth.json`. API-key authentication
-  is not accepted. Prepare a separate `CODEX_HOME` with `codex login --device-auth`;
-  do not copy global configuration, hooks, MCP servers, or skills.
-  Refresh expired authentication manually.
+Clone the project:
 
-Save integration secrets in `secrets/integrations.json` using `secrets.example.json`
-and restrict access with filesystem permissions. Secrets, local configurations,
-state, `.env`, and binaries are excluded from Git. Telegram replies are clarification
-text, not a way to supply secrets or relax isolation.
+```powershell
+git clone https://github.com/UGamerZ/codex-orchestrator.git
+cd codex-orchestrator
+```
 
-## Windows with WSL2 and Docker
+### 2. Choose an installation path
 
-Docker Desktop is not supported on Windows Server. This installation uses Docker
-Engine inside Ubuntu WSL2 and runs the controller on Windows through
-`wsl.exe --exec docker`. GitHub credentials remain in the Windows credential store.
+| Backend | Platform | Setup guide |
+| --- | --- | --- |
+| **Docker** | Linux, or Windows using Linux Docker Engine through WSL2 | [Docker setup below](#docker-setup) |
+| **Restricted native execution** | Windows, without Docker or a VM | [Native Windows installation](NATIVE-INSTALL.md) |
 
-1. Enable nested virtualization at the VM host if Windows itself runs in a VM.
-2. Run `wsl --install --distribution Ubuntu-24.04 --no-launch`.
-3. Start Ubuntu and run `scripts/install-docker-ubuntu.sh` as root. It uses Docker's
-   official APT repository and does not change Windows virtualization settings.
-4. Run `scripts/Configure-Project.ps1` and `scripts/Setup.ps1 -Config config.json`.
-   Setup builds images, the internal network, and the proxy.
-5. Configure `config.json`, `secrets/integrations.json`, and `secrets/auth.json`.
-   Set the absolute `gh.exe` path if the current process's PATH has not refreshed.
-6. Run `scripts/check-isolation.sh` in Linux and verify the reviewer's read-only mount.
-7. Run `scripts/Start-Orchestrator.ps1 -Config config.json -Check`, then run it without `-Check`.
-8. Verify one test card, PR, Telegram Reply, automatic fix cycle, and completion
-   notification after a successful internal review.
-9. Only after that end-to-end check, configure Task Scheduler under the account that
-   owns the selected credentials. These scripts do not install automatic startup.
+The PowerShell project wizard lets you choose the repository or local project, base branch, GitHub account, and Trello routing. It can offer to create a GitHub repository for a new local project. Configuration does not start agents.
 
-On a regular Linux host, set `docker_distro` to `""`, configure `gh` and the chosen
-account, build with `go build -o bin/orchestrator ./cmd/orchestrator`, and build/start
-the Docker images and Compose services. Supply integration environment variables to
-the controller. The controller code is portable; the interactive PowerShell wizard
-is the Windows setup path.
+<details>
+<summary><strong>Native Windows setup</strong></summary>
 
-## Operation
+Run these commands from an Administrator PowerShell:
 
-Use **Reply on the question message**. Its message ID maps to the requesting agent's
-thread ID, so simultaneous questions stay separate. `/status` lists task states.
-Send `/check` to request an immediate board check without waiting for the hourly scan.
-It preserves the hourly schedule and executor limits. If the manager is busy or waiting
-for clarification, the request stays queued until that manager run finishes.
-Other messages without Reply do not start work or change permissions. New runs pause
-while Telegram is unavailable.
+```powershell
+.\scripts\Configure-Project.ps1 -Backend native-windows -Config config.native.json
+.\scripts\Setup-Native.ps1 -Config config.native.json
+```
 
-Agents resolve routine implementation choices autonomously using the task and local
-code. They ask only about genuine blockers and combine related questions. Replies
-are saved with their questions and supplied on subsequent turns in the same session.
-An identical answered agent question is retried once with that context instead of
-being immediately sent again. Setup failures are labeled **System blocker**, so they
-are not mistaken for questions from an executor that has not started.
+Configure integrations and Codex authentication as described below, then validate and start:
 
-State is saved atomically in `state_dir/state.json`. Interrupted jobs pause after a
-crash and require a human reply; abandoned containers are stopped.
-`state_dir/controller.lock` prevents a second controller for that state directory.
-Remove a stale lock only after confirming the previous process has exited.
-Named volumes are retained for recovery; automatic cleanup is not enabled.
-The operator sets retention and cleanup rules.
+```powershell
+.\scripts\Start-Orchestrator.ps1 -Config config.native.json -Check
+.\scripts\Start-Orchestrator.ps1 -Config config.native.json
+```
 
-A crash between sending a Telegram notification and recording it may cause a
-duplicate, because `sendMessage` has no idempotency key. Completion notifications
-apply only to the current head SHA. PR creation recovers using the exact task branch.
+Setup provisions the restricted backend and runs isolation probes. Read the [native installation guide](NATIVE-INSTALL.md) for prerequisites, storage locations, and limitations.
 
-English is the default for documentation, system prompts, and operator messages.
-Agents use English for summaries, questions, and findings unless a task explicitly
-requests another language. Task descriptions and project content may use any language.
+</details>
 
-## Development checks
+<a name="docker-setup"></a>
 
-Run `go test ./...` and `go vet ./...`. Checks cover Reply routing, executor concurrency,
-reviewer capability restrictions, stale SHAs, rate limits, recovery, local publication
-and review, project/account separation, agent Git isolation, and proxy rules.
-They do not replace isolation probes or end-to-end tests with real integrations.
+<details>
+<summary><strong>Docker setup</strong></summary>
 
-Reference documentation: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode),
-[Codex authentication](https://learn.chatgpt.com/docs/auth),
-[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/), and
-[Docker Desktop Windows requirements](https://docs.docker.com/desktop/setup/install/windows-install/).
+On Windows, prepare Ubuntu WSL2 and Linux Docker Engine first. The supplied setup uses Docker Engine inside WSL2; it does not depend on Docker Desktop. See the [Docker installation notes](#docker-installation-notes).
 
-## Installation without Docker or a VM
+```powershell
+.\scripts\Configure-Project.ps1 -Backend docker -Config config.json
+.\scripts\Setup.ps1 -Config config.json
+```
 
-See [NATIVE-INSTALL.md](NATIVE-INSTALL.md) for the restricted Windows backend,
-its isolation checks, and its limitations.
+Configure integrations and Codex authentication as described below, verify isolation, then validate and start:
 
-Replies to a **Review complete** notification are human review feedback. The controller retains the feedback, acknowledges receipt in Telegram, returns open system-owned tasks to In Progress, and resumes their executor session followed by another internal review. Additional replies to the same notification remain valid. Active workers finish before the next turn starts. External branches remain review-only; closed PRs require a new task. Older completion notifications are also recognized when Telegram includes their original text in the reply.
+```powershell
+.\scripts\Start-Orchestrator.ps1 -Config config.json -Check
+.\scripts\Start-Orchestrator.ps1 -Config config.json
+```
 
-Executor commit subjects use 3-5 meaningful words, with a hard limit of 5 words and 60 characters. Detailed explanations belong in the task summary.
+Run `scripts/check-isolation.sh` in the Linux environment before processing tasks. Setup builds the images, proxy, and internal network. Reapply `scripts/network-policy.sh` after restarting Docker.
 
-Data preservation is mandatory for every agent. A migration to JSON must copy and validate values while retaining the original records and schema. Future or theoretical cleanup does not authorize current deletion. Destructive operations require a separate specific human decision; normal task approval does not grant it. The trusted publisher blocks newly added DELETE FROM, TRUNCATE, DROP TABLE/DATABASE/SCHEMA, and ALTER TABLE DROP SQL before commit/push/local export. This conservative static tripwire may also flag test or documentation examples and is not a complete safety proof; it has no Telegram-reply bypass. Agents must remove flagged operations or leave publication blocked for manual inspection. Tests must use explicitly disposable isolated databases, never live/shared data.
+</details>
 
-Stalled agent recovery: the configured run deadline (45 minutes in this installation) terminates the worker before a retry is scheduled. Executor/reviewer/manager runs retry up to three times, five minutes apart, preserving the workspace, base commit, and known session. After a controller restart, interrupted agent runs recover only after abandoned-worker cleanup succeeds. Human questions, fix limits, permission or data-preservation blocks, external write protection, and uncertain publisher results are not bypassed. A quiet run is not treated as stuck merely because it has produced no visible message.
+### 3. Configure access
 
-External branch reviews with findings enter a visible waiting state and send a Telegram blocker with the findings. Previously silent changes states are recovered at startup. Timeout recovery does not authorize writes to external branches; apply changes manually and reply for another review.
+Create `secrets/integrations.json` from [secrets.example.json](secrets.example.json) and fill in the Trello and Telegram credentials. Set the board ID, three distinct list IDs, and Telegram chat ID in your local configuration.
 
-Set `auto_continue_task_branches` to `true` to continue system-created tasks after manual commits or GitHub Update branch. The controller verifies the configured repository and exact task branch, prepares the latest commit, invalidates the previous verdict, and reviews again. Fixes use the current commit as their parent and ordinary fast-forward pushes. Other PRs remain read-only. If the branch changes during preparation or publication, the exact-head guard stops the operation; the next discovery refreshes the task. No force push, base-branch writes, GitHub approval, or merge is permitted. Saved clarifications and permissions are retained; a fresh agent session avoids applying stale workspace assumptions. This installation enables the setting with the owner's permission.
+For GitHub mode, authenticate the **project account** through GitHub CLI. The controller selects the configured account explicitly; the account that owns this orchestrator repository does not determine your working identity. Local mode requires no GitHub account.
 
-The operator dashboard is available at **http://127.0.0.1:8787** on the controller machine. It provides task statuses, blocker explanations, native agent activity, task answers/retries, scheduling controls, runtime configuration, and persistent events. See [dashboard and watchdog instructions](docs/DASHBOARD.md). Controller/agent failures notify Telegram; waiting tasks receive hourly reminders. SQL line comments no longer trigger the destructive-operation guard; actual destructive SQL remains blocked.
+Set `codex_auth_file` to your chosen Codex ChatGPT authentication file. For a long-running native installation, use the host's maintained login rather than a one-time copy that can expire. The native controller synchronizes authentication before each run and preserves a newer private runtime login for the same account. Authentication files remain inaccessible to native agent tools.
 
+Use a dedicated Telegram bot: the controller polls updates, so another poller or webhook must not consume the same bot messages.
 
-Multiple projects and GitHub accounts are managed in the dashboard's **Environments** tab. Add GitHub or local Git profiles and switch when workers are idle. Each profile retains separate tasks, branches, workspaces, logs, and sessions; only the selected profile runs. Device sign-in keeps account credentials with GitHub CLI, and each profile selects its account explicitly. See [environment setup and switching](docs/DASHBOARD.md#multiple-environments-and-github-accounts).
+Keep secrets and runtime configuration private. Do not send credentials through Telegram or put them in task descriptions.
+
+### 4. Open the dashboard
+
+Open **http://127.0.0.1:8787** on the controller machine.
+
+- **Tasks:** inspect progress, answer questions, retry blocked work, and request a board check.
+- **Agents:** follow tool activity, results, and errors in filtered logs. Private reasoning is excluded.
+- **Environments:** manage projects and GitHub accounts; switch when workers are idle.
+- **Configuration:** adjust models, limits, deadlines, and scheduling.
+- **Events:** inspect controller actions, failures, and recovery.
+
+Verify a complete cycle with a test card before configuring unattended operation: task selection, implementation, review, any clarification reply, and the completion notification.
+
+See the [dashboard and watchdog guide](docs/DASHBOARD.md) for operation and startup monitoring.
+
+## Daily use
+
+| Action | Where |
+| --- | --- |
+| Add work | Put a card in the configured **To Do** list. |
+| Check the board now | Send `/check` in Telegram or use the dashboard. |
+| Check task states | Send `/status` or open **Tasks**. |
+| Answer an agent | Use **Reply** on its Telegram question, or answer in the dashboard. |
+| Request changes after review | Reply to the **Review complete** notification for an open system-owned task. |
+| Change projects | Use **Environments → Switch environment** after active workers finish. |
+| Remove a saved environment | Use **Delete environment** on an inactive profile. Files and task history are retained. |
+
+Environments keep their own tasks, workspaces, branches, logs, and sessions. They may share a Trello board and lists; only the selected environment processes work. Editing project identity or routing retains the previous setup as a separate environment.
+
+Questions and answers stay attached to their originating tasks, including inactive environments. Deleting an environment prevents old Telegram replies from restarting its agents.
+
+### Models and limits
+
+Defaults shipped in the example configurations:
+
+| Role or limit | Default |
+| --- | --- |
+| Executor | `gpt-6.1-sol`, `low` effort |
+| Executor fallback | `gpt-6-sol`, `medium` effort |
+| Manager and reviewer | `gpt-6-luna`, `low` effort |
+| Concurrent executors | 2 |
+| Board check interval | 1 hour |
+| Automatic fix rounds | 3 |
+| General run deadline | 45 minutes |
+| Reviewer deadline | 15 minutes, capped by the general deadline |
+
+Models and reasoning levels are configurable; choose models available to your Codex account. The fallback is used when the primary model is explicitly unavailable. It does not bypass subscription limits: a rate limit delays the next attempt by an hour.
+
+Interrupted or timed-out agent runs can retry up to three times, five minutes apart. Human questions, exhausted fix limits, publication uncertainty, and permission blocks remain blockers. A quiet agent is not considered stuck solely because it has not sent a recent message.
+
+## Isolation and permissions
+
+The trusted controller manages integrations and publication. Executors work on task branches; reviewers and managers receive read-only working copies.
+
+| Boundary | Enforcement |
+| --- | --- |
+| **Git publication** | A separate broker ignores the agent's Git metadata and permits ordinary pushes only to the task's `codex/...` branch. |
+| **GitHub review** | Agents have no GitHub credentials. Approve and merge operations are not exposed. |
+| **Integration credentials** | Trello, Telegram, and GitHub management credentials remain outside agent environments. |
+| **Data preservation** | A conservative publisher guard blocks newly added destructive SQL operations. Migrating settings does not imply permission to delete the source data. |
+| **Workflow changes** | Changes to `.github/workflows` require explicit, task-specific human permission, checked by the publisher. |
+| **Manual branch updates** | Automatic continuation requires `auto_continue_task_branches`; other PR branches remain read-only. |
+| **Agent capabilities** | Apps, plugins, hooks, browser tools, and built-in delegation are disabled. |
+| **Isolation failures** | A failed sandbox run does not trigger an unrestricted retry. |
+
+<details>
+<summary><strong>Docker isolation details</strong></summary>
+
+Each task uses named volumes for its workspace, private publication repository, review materials, and role-specific Codex state. The host project directory and Docker socket are not mounted into agent containers.
+
+Agents run as UID 1000 with dropped capabilities, `no-new-privileges`, a read-only root filesystem, and CPU, memory, and process limits. Manager and reviewer workspaces are read-only.
+
+The internal network allows outbound model traffic only through a CONNECT proxy restricted to `chatgpt.com:443`, `api.openai.com:443`, and `auth.openai.com:443`. Private destinations, neighboring agents, host services, and external DNS are blocked by the network policy. Prepare required dependencies in the image; missing resources require human assistance.
+
+Codex uses `danger-full-access` only inside these containers: Docker, mounts, and network policy provide that boundary. Docker agents can access their selected ChatGPT credentials for model access, but not integration credentials. Native execution does not use that mode.
+
+Containers share the Linux kernel; they do not provide the same boundary as a separate virtual machine. Isolation probes and the static SQL guard are safeguards, not a complete security proof.
+
+</details>
+
+<details>
+<summary><strong>Task attachments and branch references</strong></summary>
+
+The controller downloads Trello attachments and supported public HTTPS links from card descriptions and answers. Agents receive local files and a manifest; download credentials stay on the host. Private-network destinations and credential forwarding are rejected. Other private services require separately supplied files.
+
+Limits are **32 files**, **16 MiB per file**, and **64 MiB per task**. Failed downloads are listed so the agent can ask for the specific missing resource.
+
+Agents also receive a read-only `branches.git` reference repository with the project's branches and history, plus `branches.txt` containing commit IDs. The reference has no remote or credentials and is excluded from publication. Its limit is **512 MiB**.
+
+Context is mounted at `/review-input/context` in Docker and stored under `.orchestrator-review/context` in the native task workspace.
+
+</details>
+
+<details>
+<summary><strong>Human permissions and publication rules</strong></summary>
+
+For a workflow change, reply directly to the executor's question beginning **May I add or modify a file in .github/workflows**. A saved affirmative reply, such as `yes` or `go ahead`, authorizes that task's workflow edits only. It does not grant base-branch writes, force pushes, GitHub approval, merging, or access to secrets.
+
+The SQL guard blocks newly added `DELETE FROM`, `TRUNCATE`, `DROP TABLE/DATABASE/SCHEMA`, and `ALTER TABLE DROP` operations before publication. It has no Telegram-reply bypass; flagged operations require removal or manual inspection. Tests must use disposable, isolated databases.
+
+Existing tracked relative symlinks are preserved only when their complete target chain stays inside the working copy and avoids Git metadata. New or modified links and submodules require separate human preparation.
+
+Open external PRs targeting the configured base branch may receive review comments, but automatic fixes apply only to system-created task branches. Enabling `auto_continue_task_branches` permits those task branches to continue after verified manual updates. The exact-head guard still stops publication if the branch changes during preparation or push.
+
+</details>
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Project setup](PROJECT-SETUP.md) | Existing GitHub repositories, new projects, account selection, and local-only work. |
+| [Native Windows installation](NATIVE-INSTALL.md) | Restricted execution without Docker or a VM, isolation probes, and authentication. |
+| [Dashboard and operations](docs/DASHBOARD.md) | Task controls, agent logs, environments, Telegram, and the watchdog. |
+| [Docker configuration example](config.example.json) | Starting configuration for Docker. |
+| [Native configuration example](config.native.example.json) | Starting configuration for restricted Windows execution. |
+| [Integration secrets example](secrets.example.json) | Local Trello and Telegram credential fields. |
+| [Russian documentation](docs/ru/README.md) | Russian-language overview and setup guides. |
+
+English is the base language for documentation and operator messages. Tasks and project content may use other languages; agents can follow a task's requested language.
+
+<a name="docker-installation-notes"></a>
+
+<details>
+<summary><strong>Docker installation notes</strong></summary>
+
+**Windows / WSL2**
+
+1. If Windows runs inside a VM, enable nested virtualization on its host.
+2. Install Ubuntu WSL2 with `wsl --install --distribution Ubuntu-24.04 --no-launch`.
+3. Start Ubuntu and run `scripts/install-docker-ubuntu.sh` as root to install Docker Engine from its official APT repository.
+4. Follow [Docker setup](#docker-setup), configure integrations, and verify isolation before processing tasks.
+
+Use the WSL Linux Docker Engine path on Windows Server; Docker Desktop is not supported there. With WSL, named volumes live on the Docker/WSL virtual disk. Moving them to a different physical disk requires moving the Docker data root or WSL disk separately.
+
+**Linux**
+
+Set `docker_distro` to an empty string, authenticate the configured GitHub account if needed, and build the controller:
+
+```sh
+go build -o bin/orchestrator ./cmd/orchestrator
+```
+
+Build the worker image and Compose proxy, apply `scripts/network-policy.sh`, and run `scripts/check-isolation.sh`. Supply the integration environment variables to the controller before starting it. The interactive setup wizard and launch script use PowerShell; Linux deployments require manual service configuration.
+
+</details>
+
+## Development
+
+```sh
+go test ./...
+go vet ./...
+```
+
+The checks cover task routing, concurrency, review restrictions, publication, recovery, project separation, and network policy. They complement isolation probes and real integration checks.
+
+Runtime state, local configurations, credentials, and binaries are excluded from Git. Preserve the environment registry and state directories in your private backups; task data and working volumes are retained for recovery.
+
+For background: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [Codex authentication](https://learn.chatgpt.com/docs/auth), and [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
