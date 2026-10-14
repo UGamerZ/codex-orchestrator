@@ -17,6 +17,7 @@
   <a href="#как-это-работает">Как это работает</a> &nbsp;·&nbsp;
   <a href="#изоляция-и-разрешения">Изоляция</a> &nbsp;·&nbsp;
   <a href="../DASHBOARD.md">Руководство по панели (EN)</a> &nbsp;·&nbsp;
+  <a href="#поддержать-проект">Поддержать проект</a> &nbsp;·&nbsp;
   <a href="../../README.md">English</a>
 </p>
 
@@ -306,3 +307,10 @@ go vet ./...
 Рабочие состояния, локальные конфигурации, учётные данные и бинарники исключены из Git. Сохраняйте реестр окружений и каталоги состояния в приватных резервных копиях; данные задач и рабочие тома сохраняются для восстановления.
 
 Дополнительные материалы: [неинтерактивный режим Codex](https://learn.chatgpt.com/docs/non-interactive-mode), [авторизация Codex](https://learn.chatgpt.com/docs/auth) и [Docker Engine в Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
+
+## Поддержать проект
+
+Если проект вам полезен, вы можете поддержать его разработку:
+
+- [Patreon](https://www.patreon.com/vladlazutchenko)
+- [DonationAlerts](https://www.donationalerts.com/r/vladislavlazutchenko)

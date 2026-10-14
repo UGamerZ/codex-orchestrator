@@ -17,6 +17,7 @@
   <a href="#how-it-works">How it works</a> &nbsp;·&nbsp;
   <a href="#isolation-and-permissions">Isolation</a> &nbsp;·&nbsp;
   <a href="docs/DASHBOARD.md">Dashboard guide</a> &nbsp;·&nbsp;
+  <a href="#support-the-project">Support</a> &nbsp;·&nbsp;
   <a href="docs/ru/README.md">Русский</a>
 </p>
 
@@ -306,3 +307,10 @@ The checks cover task routing, concurrency, review restrictions, publication, re
 Runtime state, local configurations, credentials, and binaries are excluded from Git. Preserve the environment registry and state directories in your private backups; task data and working volumes are retained for recovery.
 
 For background: [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [Codex authentication](https://learn.chatgpt.com/docs/auth), and [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
+
+## Support the project
+
+If this project is useful to you, you can support its development:
+
+- [Patreon](https://www.patreon.com/vladlazutchenko)
+- [DonationAlerts](https://www.donationalerts.com/r/vladislavlazutchenko)
