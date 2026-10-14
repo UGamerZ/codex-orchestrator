@@ -59,3 +59,13 @@ Installation does not start card processing. After configuring access, run an
 end-to-end check with one card, a PR or local review, a Telegram Reply, and an automatic
 fix. Enable automatic startup only afterward. Prefer Docker on a host with available
 virtualization when stricter isolation is required.
+
+For a long-running installation, set codex_auth_file to the absolute auth.json
+path of the host's maintained Codex ChatGPT login (normally
+C:\Users\<service-user>\.codex\auth.json, or the login under your configured
+CODEX_HOME). A one-time copy in secrets/auth.json can expire even while the
+host login remains valid. The controller reads this explicit source before each
+agent run and retains a more recently refreshed runtime login for the same
+account. It never copies runtime credentials back into the host login.
+Credentials remain inaccessible to agent tools. A 401 authorization failure is
+reported with its filtered cause; renew the configured login and retry the task.

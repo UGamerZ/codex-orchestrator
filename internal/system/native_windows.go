@@ -82,8 +82,8 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 	}
 	// The parent Codex process is trusted; its credentials stay outside tool-readable roots.
 	// A shared native runtime avoids racing setup/password changes for sandbox users.
-	if _, e = os.Stat(filepath.Join(r.nativeRuntime(), "auth.json")); e != nil {
-		result.Err = fmt.Errorf("native Codex login unavailable")
+	if e = prepareNativeAuth(r.C.AuthFile, r.nativeRuntime()); e != nil {
+		result.Err = e
 		return result
 	}
 	output := filepath.Join(home, "result.json")
@@ -151,7 +151,7 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		result.RateLimited = strings.Contains(d, "usage limit") || strings.Contains(d, "rate limit") || strings.Contains(d, "quota")
 		result.ModelUnavailable = strings.Contains(d, "model_not_found") || strings.Contains(d, "model is not supported")
 		result.ModelBusy = modelBusy(d)
-		result.Err = fmt.Errorf("native agent failed inside sandbox; no unrestricted retry is permitted")
+		result.Err = nativeProcessError(stdout.String(), stderr.String(), e, agentLogSecrets(filepath.Join(filepath.Dir(filepath.Dir(exe)), "config.json"), r.C))
 		if ctx.Err() != nil {
 			result.TimedOut = true
 			result.Err = fmt.Errorf("native agent timed out; process job terminated")

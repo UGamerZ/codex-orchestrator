@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"codex-orchestrator/internal/broker"
 )
@@ -166,7 +168,12 @@ func nativePrompt(prompt, workspace, review string) string {
 	return "Native Windows command rules: PowerShell may start in C:\\ even when the tool workdir field is set. Do not rely on relative paths or Set-Location: protected parent directories may prevent changing the shell location. Use explicit ABSOLUTE paths for every project read or modification. For Git use git -C with the absolute project directory; for searches pass the absolute project path to rg. Read supplied files with Get-Content -LiteralPath <absolute-path> -Raw, or [IO.File]::ReadAllText(<absolute-path>). If a relative-path lookup fails, retry the provided absolute path before declaring a resource missing or asking a question. Project directory: " + workspace + ". Trusted review files, when reviewing: " + filepath.Join(review, "diff.patch") + " and " + filepath.Join(review, "description.txt") + ". Use these CURRENT paths even if an earlier turn referenced a different folder.\n\n" + prompt
 }
 func psQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+
+var nativeAuthMu sync.Mutex
+
 func prepareNativeAuth(source, home string) error {
+	nativeAuthMu.Lock()
+	defer nativeAuthMu.Unlock()
 	b, e := os.ReadFile(source)
 	if e != nil {
 		return fmt.Errorf("Codex authentication unavailable")
@@ -195,7 +202,12 @@ func prepareNativeAuth(source, home string) error {
 	if info, e := os.Lstat(filepath.Join(home, "auth.json")); e == nil && info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("auth file is a reparse point")
 	}
-	return os.WriteFile(filepath.Join(home, "auth.json"), b, 0600)
+	runtimePath := filepath.Join(home, "auth.json")
+	// Keep the CLI's newer private refresh only for the explicitly configured account.
+	if existing, err := os.ReadFile(runtimePath); err == nil && newerNativeAuth(b, existing) {
+		return nil
+	}
+	return writePrivateJSON(runtimePath, clean)
 }
 
 var disabledNativeFeatures = []string{"apps", "plugins", "remote_plugin", "hooks", "multi_agent", "multi_agent_v2", "computer_use", "browser_use", "browser_use_external", "in_app_browser", "daemon_auto_start", "workspace_dependencies", "skill_mcp_dependency_install", "skill_search", "image_generation", "tool_suggest", "auth_elicitation", "windows_sandbox_service"}
@@ -225,4 +237,21 @@ func nativeExecArgs(c Config, j Job, role, workspace, home, result, schema strin
 		args = append(args, j.Session)
 	}
 	return append(args, "-")
+}
+
+// A changed source account replaces the cache, regardless of refresh date.
+func newerNativeAuth(source, existing []byte) bool {
+	type login struct {
+		Tokens struct {
+			Account string `json:"account_id"`
+			Access  string `json:"access_token"`
+		} `json:"tokens"`
+		Refreshed time.Time `json:"last_refresh"`
+	}
+	var old, current login
+	if json.Unmarshal(source, &old) != nil || json.Unmarshal(existing, &current) != nil {
+		return false
+	}
+	return old.Tokens.Account != "" && old.Tokens.Account == current.Tokens.Account &&
+		current.Tokens.Access != "" && current.Refreshed.After(old.Refreshed)
 }
