@@ -192,7 +192,7 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		return e
 	}
 	home := filepath.Join(filepath.Dir(p.Publish), "probe-runtime")
-	for _, dir := range []string{p.Workspace, p.Review, filepath.Join(home, "scratch"), r.nativeRuntime()} {
+	for _, dir := range []string{p.Workspace, p.Review, filepath.Join(home, "scratch"), r.nativeRuntime(), nativeProvisioningRoot(c)} {
 		if e = os.MkdirAll(dir, 0700); e != nil {
 			return e
 		}
@@ -201,13 +201,13 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 	if e = os.WriteFile(outside, []byte("TEST SENTINEL, NO SECRETS"), 0600); e != nil {
 		return e
 	}
-	seedUsers := filepath.Join(r.nativeRuntime(), ".sandbox-secrets", "sandbox_users.json")
+	seedUsers := filepath.Join(nativeProvisioningRoot(c), ".sandbox-secrets", "sandbox_users.json")
 	if _, err := os.Stat(seedUsers); os.IsNotExist(err) {
 		args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, p.Workspace, home, "executor")...)
 		args = append(args, "-C", p.Workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "whoami.exe")
 		cmd := exec.CommandContext(ctx, c.CodexPath, args...)
 		cmd.Dir = p.Workspace
-		cmd.Env = append(withoutEnv(nativeEnvironment(home), "CODEX_HOME"), "CODEX_HOME="+r.nativeRuntime())
+		cmd.Env = append(withoutEnv(nativeEnvironment(home), "CODEX_HOME"), "CODEX_HOME="+nativeProvisioningRoot(c))
 		if b, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("native sandbox provisioning failed: %s", clip(string(b), 1000))
 		}

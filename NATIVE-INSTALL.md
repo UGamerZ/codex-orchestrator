@@ -78,9 +78,10 @@ another task's conversation history, SQLite databases, memories, caches, or scra
 files. Their project files come from the configured base-branch snapshot. Fixes
 and retries continue only that task's own workspace and role session.
 
-Only the pre-provisioned Windows sandbox account metadata is seeded into a new
-runtime. Global user configuration, skills, session databases, and capability
-state are not copied. Existing tasks may migrate the exact known rollout file
+Only Windows sandbox OS provisioning and ACL bookkeeping are shared through
+validated directory junctions. Account records must stay shared because CLI
+provisioning can rotate the machine account passwords. Agent configuration,
+skills, session databases, memories, and caches remain separate. Existing tasks may migrate the exact known rollout file
 after both its session ID and workspace have been verified. Old logs remain
 available to the dashboard without becoming another task's runtime state.
 

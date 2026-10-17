@@ -12,8 +12,8 @@ import (
 
 func nativeCodexHome(home string) string { return filepath.Join(home, "codex") }
 
-// The machine sandbox provisioning is reusable. Codex conversations, databases,
-// memories, caches, capabilities and configuration never cross task/role homes.
+// Machine sandbox provisioning is shared. Codex conversations, databases,
+// memories, caches and configuration never cross task/role homes.
 func prepareNativeTaskRuntime(c Config, home, workspace, session string) error {
 	root := nativeCodexHome(home)
 	for _, dir := range []string{home, root} {
@@ -50,12 +50,10 @@ func prepareNativeTaskRuntime(c Config, home, workspace, session string) error {
 			return err
 		}
 	}
-	seed := filepath.Join(c.NativeRoot, "codex-runtime")
-	for _, relative := range []string{filepath.Join(".sandbox", "setup_marker.json"), filepath.Join(".sandbox-secrets", "sandbox_users.json")} {
-		if err := copyNativeProvisioningFile(filepath.Join(seed, relative), filepath.Join(root, relative)); err != nil {
-			return err
-		}
+	if err := prepareNativeProvisioning(c, root); err != nil {
+		return err
 	}
+	seed := filepath.Join(c.NativeRoot, "codex-runtime")
 	if session != "" {
 		if !safeID.MatchString(session) {
 			return fmt.Errorf("invalid native session ID")
@@ -69,6 +67,14 @@ func prepareNativeTaskRuntime(c Config, home, workspace, session string) error {
 		return nil
 	}
 	return nil
+}
+
+func nativeProvisioningRoot(c Config) string {
+	base := filepath.Clean(c.NativeRoot)
+	if strings.EqualFold(filepath.Base(filepath.Dir(base)), "environments") {
+		base = filepath.Dir(filepath.Dir(base))
+	}
+	return filepath.Join(base, "codex-runtime")
 }
 
 func copyNativeProvisioningFile(source, target string) error {
