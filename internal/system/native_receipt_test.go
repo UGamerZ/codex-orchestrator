@@ -27,7 +27,7 @@ func TestEnvironmentIsolationCheckTracksInstalledCLI(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	writeReceipt(2, "current CLI")
+	writeReceipt(3, "current CLI")
 	if environmentNeedsIsolationCheck(p) {
 		t.Fatal("current verified receipt should be reused")
 	}
@@ -36,15 +36,15 @@ func TestEnvironmentIsolationCheckTracksInstalledCLI(t *testing.T) {
 		t.Fatal("unverified profile must run probes even with receipt")
 	}
 	p.IsolationVerified = true
-	writeReceipt(1, "current CLI")
+	writeReceipt(2, "current CLI")
 	if !environmentNeedsIsolationCheck(p) {
 		t.Fatal("old receipt format must trigger verification")
 	}
-	writeReceipt(2, "old CLI")
+	writeReceipt(3, "old CLI")
 	if !environmentNeedsIsolationCheck(p) {
 		t.Fatal("updated CLI must trigger verification")
 	}
-	writeReceipt(2, "current CLI")
+	writeReceipt(3, "current CLI")
 	if err := os.WriteFile(cli, []byte("another update"), 0600); err != nil {
 		t.Fatal(err)
 	}

@@ -19,7 +19,7 @@ func validateNativeIsolationReceipt(c Config) error {
 		Version int    `json:"version"`
 		Codex   string `json:"codex_sha256"`
 	}
-	if json.Unmarshal(b, &receipt) != nil || receipt.Version != 2 {
+	if json.Unmarshal(b, &receipt) != nil || receipt.Version != 3 {
 		return fmt.Errorf("invalid isolation receipt")
 	}
 	cli, err := os.ReadFile(c.CodexPath)

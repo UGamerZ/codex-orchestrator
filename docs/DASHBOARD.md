@@ -6,7 +6,7 @@ The controller serves the dashboard by default. `-web ""` disables it; `-web 127
 - **Tasks:** status, blocker, reviewer findings, current commit, PR link, retry schedule, answers, and manual retry.
 - **Agents:** running role, elapsed time, current session, last session activity, and last tool/event kind. Native telemetry never displays arguments, tool output, or raw model conversations. Docker agents currently expose lifecycle events, not native session telemetry.
 - **Environments:** add independent GitHub or local projects, select a GitHub account, sign in another account, and switch the active environment when agents are idle.
-- **Configuration:** models, reasoning effort, executor concurrency (maximum two), retry/fix limits, run deadline, manager interval, and branch continuation. Changes are validated and applied only while workers are idle. A pending change survives controller restarts.
+- **Configuration:** models, reasoning effort, executor concurrency (maximum two in Docker; native Windows serializes all agent roles and publication), retry/fix limits, run deadline, manager interval, and branch continuation. Changes are validated and applied only while workers are idle. A pending change survives controller restarts.
 - **Events:** the latest 200 starts, results, blockers, controller issues, and operator actions. Events persist across restarts.
 - **Check board:** request an immediate To Do check.
 - **Pause scheduling:** finish active work but stop starting new agent and publisher runs. Resume starts scheduling again.
@@ -75,3 +75,5 @@ Click **Delete environment** on an inactive profile and confirm the removal. Swi
 Deletion removes the profile from the dashboard and prevents activation, editing, and agent restarts from old Telegram replies. Working files, local Git history, logs, task records, GitHub repositories, and account logins are retained. A private ownership record stays in the registry so existing PRs are not rediscovered as new tasks in another environment. You can reuse the deleted environment's name when creating a new profile.
 
 A card outside the managed Trello lists stays completed even if its PR changes. To request further work on an open PR, explicitly return the card to To Do, In Progress, or Done, then reply to its review-completion notification. The controller checks the live card and PR status before resuming. Closed/merged PRs and cards still archived or outside those lists do not restart. Feedback is retained even when restarting is blocked, and the acknowledgment states the actual outcome. Inactive-environment checks use that environment's repository and GitHub account.
+
+Native agent activity and logs use the task/role-specific Codex session store. Legacy shared logs remain readable for the matching task/session only; they are not loaded as shared execution state.

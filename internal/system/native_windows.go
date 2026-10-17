@@ -7,17 +7,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
 func (r *Runner) nativeRuntime() string { return filepath.Join(r.C.NativeRoot, "codex-runtime") }
 func (r *Runner) nativeEnv(home string) []string {
-	return append(withoutEnv(nativeEnvironment(home), "CODEX_HOME"), "CODEX_HOME="+r.nativeRuntime())
+	return append(withoutEnv(nativeEnvironment(home), "CODEX_HOME"), "CODEX_HOME="+nativeCodexHome(home))
 }
 func (r *Runner) nativePreflight(ctx context.Context) error {
 	if e := NativeNetworkPolicy(false); e != nil {
@@ -34,7 +36,12 @@ func (r *Runner) nativePreflight(ctx context.Context) error {
 	}
 	return nil
 }
+
+var nativeExecutionMu sync.Mutex
+
 func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
+	nativeExecutionMu.Lock()
+	defer nativeExecutionMu.Unlock()
 	result := RunResult{ID: j.ID, Role: role}
 	if e := NativeNetworkPolicy(false); e != nil {
 		result.Err = e
@@ -81,8 +88,16 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		return result
 	}
 	// The parent Codex process is trusted; its credentials stay outside tool-readable roots.
-	// A shared native runtime avoids racing setup/password changes for sandbox users.
-	if e = prepareNativeAuth(r.C.AuthFile, r.nativeRuntime()); e != nil {
+	// Task/role runtimes share only provisioning, never state or conversation history.
+	if e = prepareNativeTaskRuntime(r.C, home, p.Workspace, j.Session); e != nil {
+		result.Err = e
+		return result
+	}
+	if e = prepareNativeAuth(r.C.AuthFile, nativeCodexHome(home)); e != nil {
+		result.Err = e
+		return result
+	}
+	if e = applyNativeTaskScope(ctx, r.C, p.Workspace, home); e != nil {
 		result.Err = e
 		return result
 	}
@@ -195,12 +210,30 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 	if e = os.WriteFile(outside, []byte("TEST SENTINEL, NO SECRETS"), 0600); e != nil {
 		return e
 	}
+	seedUsers := filepath.Join(r.nativeRuntime(), ".sandbox-secrets", "sandbox_users.json")
+	if _, err := os.Stat(seedUsers); os.IsNotExist(err) {
+		args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, p.Workspace, home, "executor")...)
+		args = append(args, "-C", p.Workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "whoami.exe")
+		cmd := exec.CommandContext(ctx, c.CodexPath, args...)
+		cmd.Dir = p.Workspace
+		cmd.Env = append(withoutEnv(nativeEnvironment(home), "CODEX_HOME"), "CODEX_HOME="+r.nativeRuntime())
+		if b, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("native sandbox provisioning failed: %s", clip(string(b), 1000))
+		}
+	}
 	run := func(role, script string) (string, error) {
-		args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, p.Workspace, home, role)...)
+		roleHome := filepath.Join(filepath.Dir(p.Publish), role+"-runtime")
+		if err := prepareNativeTaskRuntime(c, roleHome, p.Workspace, ""); err != nil {
+			return "", err
+		}
+		if err := applyNativeTaskScope(ctx, c, p.Workspace, roleHome); err != nil {
+			return "", err
+		}
+		args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, p.Workspace, roleHome, role)...)
 		args = append(args, "-C", p.Workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 		cmd := exec.CommandContext(ctx, c.CodexPath, args...)
 		cmd.Dir = p.Workspace
-		cmd.Env = r.nativeEnv(home)
+		cmd.Env = r.nativeEnv(roleHome)
 		b, e := cmd.CombinedOutput()
 		if e != nil {
 			return string(b), fmt.Errorf("native %s sandbox probe failed; no fallback allowed: %s", role, clip(string(b), 1600))
@@ -212,14 +245,70 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 	if e = os.WriteFile(reviewMarker, []byte("trusted-review-probe"), 0644); e != nil {
 		return e
 	}
-	common := "$ErrorActionPreference='Stop'; $actor=[Security.Principal.WindowsIdentity]::GetCurrent().Name; if ($actor -notmatch 'CodexSandboxOffline') { throw 'Dedicated offline sandbox user required' };"
-	if _, e = run("executor", common+"[IO.File]::WriteAllText("+psQuote(marker)+",'probe'); if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Workspace access failed' }; if ([IO.File]::ReadAllText("+psQuote(reviewMarker)+") -ne 'trusted-review-probe') { throw 'Executor reference read failed' }; $blocked=$false; try { [IO.File]::WriteAllText("+psQuote(reviewMarker)+",'changed') } catch { $blocked=$true }; if (!$blocked) { throw 'Executor can write trusted references' }; $blocked=$false; try { [IO.File]::ReadAllText("+psQuote(outside)+") | Out-Null } catch { $blocked=$true }; if (!$blocked) { throw 'Outside read allowed' }; 'executor-ok'"); e != nil {
+	peer, err := r.nativePaths("isolation-peer")
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(peer.Review, 0700); err != nil {
+		return err
+	}
+	peerFile := filepath.Join(peer.Workspace, "peer.txt")
+	peerReference := filepath.Join(peer.Review, "peer-reference.txt")
+	if err = os.WriteFile(peerReference, []byte("peer reference"), 0600); err != nil {
+		return err
+	}
+	if err = os.WriteFile(peerFile, []byte("other task"), 0600); err != nil {
+		return err
+	}
+	common := "$ErrorActionPreference='Stop'; $actor=(& whoami.exe); if ($actor -notmatch 'CodexSandboxOffline') { throw 'Dedicated offline sandbox user required' };"
+	// Give the peer a real sandbox run first, so its permissions are actually
+	// provisioned before testing that another task cannot use them.
+	runPeer := func() error {
+		peerHome := filepath.Join(filepath.Dir(peer.Publish), "executor-runtime")
+		if err := prepareNativeTaskRuntime(c, peerHome, peer.Workspace, ""); err != nil {
+			return err
+		}
+		if err := applyNativeTaskScope(ctx, c, peer.Workspace, peerHome); err != nil {
+			return err
+		}
+		args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, peer.Workspace, peerHome, "executor")...)
+		script := common + "Set-Content -LiteralPath " + psQuote(peerFile) + " -Value 'peer-working' -NoNewline; if ((Get-Content -LiteralPath " + psQuote(peerFile) + " -Raw) -ne 'peer-working') { throw 'Peer workspace failed' }; if ((Get-Content -LiteralPath " + psQuote(peerReference) + " -Raw) -ne 'peer reference') { throw 'Peer reference failed' }"
+		args = append(args, "-C", peer.Workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+		cmd := exec.CommandContext(ctx, c.CodexPath, args...)
+		cmd.Dir = peer.Workspace
+		cmd.Env = r.nativeEnv(peerHome)
+		if b, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("peer task sandbox failed: %s", clip(string(b), 1200))
+		}
+		return nil
+	}
+	if err := runPeer(); err != nil {
+		return err
+	}
+	if _, e = run("executor", common+"Set-Content -LiteralPath "+psQuote(marker)+" -Value 'probe' -NoNewline; if ((Get-Content -LiteralPath "+psQuote(marker)+" -Raw) -ne 'probe') { throw 'Workspace access failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Executor reference read failed' }; $blocked=$false; try { Set-Content -LiteralPath "+psQuote(reviewMarker)+" -Value 'changed' -NoNewline } catch { $blocked=$true }; if (!$blocked) { throw 'Executor can write trusted references' }; $blocked=$false; try { (Get-Content -LiteralPath "+psQuote(outside)+" -Raw) | Out-Null } catch { $blocked=$true }; if (!$blocked) { throw 'Outside read allowed' }; 'executor-ok'"); e != nil {
 		return e
 	}
-	if _, e = run("reviewer", common+"if ([IO.File]::ReadAllText("+psQuote(marker)+") -ne 'probe') { throw 'Review read failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Review absolute-path read failed' }; if ([IO.File]::ReadAllText("+psQuote(reviewMarker)+") -ne 'trusted-review-probe') { throw 'Review material read failed' }; foreach ($target in @("+psQuote(marker)+","+psQuote(reviewMarker)+")) { $blocked=$false; try { [IO.File]::WriteAllText($target,'changed') } catch { $blocked=$true }; if (!$blocked) { throw 'Reviewer can write' } }; 'reviewer-ok'"); e != nil {
+	if _, e = run("reviewer", common+"if ((Get-Content -LiteralPath "+psQuote(marker)+" -Raw) -ne 'probe') { throw 'Review read failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Review absolute-path read failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Review material read failed' }; foreach ($target in @("+psQuote(marker)+","+psQuote(reviewMarker)+")) { $blocked=$false; try { Set-Content -LiteralPath $target -Value 'changed' -NoNewline } catch { $blocked=$true }; if (!$blocked) { throw 'Reviewer can write' } }; 'reviewer-ok'"); e != nil {
 		return e
 	}
-	if _, e = run("executor", common+"$client=New-Object Net.Sockets.TcpClient; $attempt=$client.BeginConnect('1.1.1.1',443,$null,$null); if ($attempt.AsyncWaitHandle.WaitOne(4000)) { try { $client.EndConnect($attempt) } catch {} }; if ($client.Connected) { throw 'Offline user reached internet' }; $client.Close(); 'network-ok'"); e != nil {
+	for _, role := range []string{"executor", "reviewer"} {
+		script := common + "$blocked=$false; try { (Get-Content -LiteralPath " + psQuote(peerFile) + " -Raw) | Out-Null } catch { $blocked=$true }; if (!$blocked) { throw 'Cross-task read allowed' }; $blocked=$false; try { Set-Content -LiteralPath " + psQuote(peerFile) + " -Value 'changed' -NoNewline } catch { $blocked=$true }; if (!$blocked) { throw 'Cross-task write allowed' }; 'task-isolation-ok'"
+		if _, err = run(role, script); err != nil {
+			return err
+		}
+		referenceScript := strings.ReplaceAll(script, psQuote(peerFile), psQuote(peerReference))
+		if _, err = run(role, referenceScript); err != nil {
+			return err
+		}
+	}
+	if err := runPeer(); err != nil {
+		return err
+	}
+	// Use a native client: .NET constructors are blocked by PowerShell CLM.
+	curlProbe := func(address string) string {
+		return common + "Get-Command curl.exe -ErrorAction Stop | Out-Null; & curl.exe --silent --insecure --head --output (Join-Path $env:TEMP 'network-probe.txt') --connect-timeout 2 --max-time 4 '" + address + "'; $exit=$LASTEXITCODE; if ($exit -eq 0) { throw 'Offline user reached network endpoint' }; if ($exit -ne 7 -and $exit -ne 28) { throw ('Unexpected network probe exit: '+$exit) }; 'network-blocked'"
+	}
+	if _, e = run("executor", curlProbe("https://1.1.1.1:443")); e != nil {
 		return e
 	}
 	listener, e := net.Listen("tcp", "127.0.0.1:0")
@@ -227,8 +316,18 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		return e
 	}
 	defer listener.Close()
-	port := listener.Addr().(*net.TCPAddr).Port
-	if _, e = run("executor", common+fmt.Sprintf("$client=New-Object Net.Sockets.TcpClient; try { $client.Connect('127.0.0.1',%d) } catch {}; if ($client.Connected) { throw 'Offline user reached host loopback' }; $client.Close(); 'loopback-ok'", port)); e != nil {
+	go http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	address := "http://" + listener.Addr().String()
+	client := &http.Client{Timeout: 3 * time.Second}
+	response, e := client.Get(address)
+	if e != nil {
+		return fmt.Errorf("host loopback control probe failed: %w", e)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("invalid loopback control response")
+	}
+	if _, e = run("executor", curlProbe(address)); e != nil {
 		return e
 	}
 	cli, e := os.ReadFile(c.CodexPath)
@@ -236,6 +335,6 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		return e
 	}
 	sum := sha256.Sum256(cli)
-	receipt, _ := json.Marshal(map[string]any{"version": 2, "codex_sha256": hex.EncodeToString(sum[:]), "verified_at": time.Now().UTC()})
+	receipt, _ := json.Marshal(map[string]any{"version": 3, "codex_sha256": hex.EncodeToString(sum[:]), "verified_at": time.Now().UTC()})
 	return os.WriteFile(filepath.Join(c.NativeRoot, "isolation.json"), receipt, 0600)
 }

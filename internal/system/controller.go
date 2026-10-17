@@ -414,6 +414,13 @@ func (c *Controller) schedule() error {
 	if !c.ChannelReady || c.State.Paused || (c.Login != nil && c.Login.Running()) {
 		return nil
 	}
+	if c.C.Backend == "native-windows" {
+		for _, j := range c.State.Jobs {
+			if j.Stage == "running" || j.Stage == "publishing" {
+				return nil
+			}
+		}
+	}
 	running, reviewer, manager := 0, false, false
 	for _, j := range c.State.Jobs {
 		if j.Stage == "running" {
@@ -471,6 +478,9 @@ func (c *Controller) schedule() error {
 				p, e := c.Runner.Broker(ctx, &copy, "publish")
 				c.Results <- RunResult{ID: copy.ID, Role: "publisher", Publication: p, Err: e}
 			}()
+			if c.C.Backend == "native-windows" {
+				return nil
+			}
 			continue
 		}
 		if role == "" {
@@ -505,6 +515,9 @@ func (c *Controller) schedule() error {
 		copy := *j
 		prompt := c.prompt(copy, role)
 		go func() { c.Results <- c.Runner.Run(copy, role, prompt) }()
+		if c.C.Backend == "native-windows" {
+			return nil
+		}
 	}
 	return nil
 }

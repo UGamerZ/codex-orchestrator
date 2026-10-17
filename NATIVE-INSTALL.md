@@ -69,3 +69,26 @@ agent run and retains a more recently refreshed runtime login for the same
 account. It never copies runtime credentials back into the host login.
 Credentials remain inaccessible to agent tools. A 401 authorization failure is
 reported with its filtered cause; renew the configured login and retry the task.
+
+## Separate task runtimes
+
+Every native task/role uses its own private Codex home at
+native_root/jobs/<task-id>/private/<role>-runtime/codex. New tasks do not inherit
+another task's conversation history, SQLite databases, memories, caches, or scratch
+files. Their project files come from the configured base-branch snapshot. Fixes
+and retries continue only that task's own workspace and role session.
+
+Only the pre-provisioned Windows sandbox account metadata is seeded into a new
+runtime. Global user configuration, skills, session databases, and capability
+state are not copied. Existing tasks may migrate the exact known rollout file
+after both its session ID and workspace have been verified. Old logs remain
+available to the dashboard without becoming another task's runtime state.
+
+Isolation receipt version 3 verifies task-local runtimes, reviewer read-only
+access, refusal to read/write a sibling task, and blocked internet and loopback
+connections. Checks work with PowerShell ConstrainedLanguage enabled.
+
+Native Windows serializes all agent roles and publication. The Windows sandbox
+uses a shared offline account, so the controller closes that account's access to
+other task workspaces, references, and runtime directories before each run.
+Docker keeps independent containers and supports up to two executors.

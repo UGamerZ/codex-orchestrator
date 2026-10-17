@@ -41,17 +41,25 @@ func nativePanelActivity(configPath, stateDir string) map[string]PanelActivity {
 		at   time.Time
 	}
 	var files []candidate
-	filepath.WalkDir(filepath.Join(config.NativeRoot, "codex-runtime", "sessions"), func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	roots := []string{filepath.Join(config.NativeRoot, "codex-runtime", "sessions")}
+	for _, j := range state.Jobs {
+		if j.Stage == "running" && safeID.MatchString(j.ID) && (j.Role == "executor" || j.Role == "reviewer" || j.Role == "manager") {
+			roots = append(roots, nativeSessionRoots(config, j.ID, j.Role)[0])
 		}
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".jsonl") {
-			if info, e := d.Info(); e == nil {
-				files = append(files, candidate{path, info.ModTime()})
+	}
+	for _, root := range roots {
+		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
 			}
-		}
-		return nil
-	})
+			if !d.IsDir() && strings.HasSuffix(d.Name(), ".jsonl") {
+				if info, e := d.Info(); e == nil {
+					files = append(files, candidate{path, info.ModTime()})
+				}
+			}
+			return nil
+		})
+	}
 	sort.Slice(files, func(i, j int) bool { return files[i].at.After(files[j].at) })
 	if len(files) > 64 {
 		files = files[:64]

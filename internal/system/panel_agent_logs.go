@@ -169,25 +169,38 @@ func readAgentLogs(configPath, stateDir, id, role string) (AgentLogs, error) {
 		session = j.Session
 	}
 	type candidate struct {
-		path string
-		time int64
+		path   string
+		time   int64
+		scoped bool
 	}
 	var files []candidate
-	filepath.WalkDir(filepath.Join(c.NativeRoot, "codex-runtime", "sessions"), func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	roots := nativeSessionRoots(c, id, role)
+	_, scopedErr := os.Stat(roots[0])
+	for index, root := range roots {
+		if index > 0 && session == "" && scopedErr == nil {
+			continue
 		}
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".jsonl") {
-			if session == "" || strings.Contains(d.Name(), session) {
-				info, e := d.Info()
-				if e == nil {
-					files = append(files, candidate{path, info.ModTime().UnixNano()})
+		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !d.IsDir() && strings.HasSuffix(d.Name(), ".jsonl") {
+				if session == "" || strings.Contains(d.Name(), session) {
+					info, e := d.Info()
+					if e == nil {
+						files = append(files, candidate{path, info.ModTime().UnixNano(), index == 0})
+					}
 				}
 			}
+			return nil
+		})
+	}
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].scoped != files[j].scoped {
+			return files[i].scoped
 		}
-		return nil
+		return files[i].time > files[j].time
 	})
-	sort.Slice(files, func(i, j int) bool { return files[i].time > files[j].time })
 	if session == "" && (j.Stage != "running" || j.Role != role) {
 		result.Notice = "No recorded session for this task and role."
 		return result, nil
