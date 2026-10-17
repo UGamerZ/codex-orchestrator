@@ -65,10 +65,15 @@ def main():
     os.umask(0o077)
     config_path = ROOT / "config.json"
     if config_path.exists() and ask("Configuration exists. Keep it?", "Y").lower() != "n":
+        existing = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        if sys.platform == "darwin" and (existing.get("docker_vm") != "colima" or existing.get("docker_distro")):
+            raise RuntimeError("This macOS installer requires docker_vm=colima and no WSL distribution. Keep a backup and reconfigure this installation.")
         print("Existing configuration and credentials retained.")
         return
     config = json.loads((ROOT / "config.example.json").read_text(encoding="utf-8-sig"))
     config.update(backend="docker", docker_distro="", gh_path=shutil.which("gh") or "gh", state_dir=str(ROOT / "state"))
+    if sys.platform == "darwin":
+        config["docker_vm"] = "colima"
     config["base_branch"] = ask("Base branch", "main")
     checked(["git", "check-ref-format", "--branch", config["base_branch"]])
     mode = ask("Project: 1 existing GitHub repository, 2 local Git project", "1")

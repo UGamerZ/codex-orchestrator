@@ -18,7 +18,7 @@ foreach($required in @('scripts/Install.ps1','scripts/configure-linux.py','INSTA
 $originalOS=$env:GOOS;$originalArch=$env:GOARCH;$originalCGO=$env:CGO_ENABLED
 $assets=@()
 try{
- foreach($target in @(@('windows','amd64'),@('linux','amd64'),@('linux','arm64'))){
+ foreach($target in @(@('windows','amd64'),@('linux','amd64'),@('linux','arm64'),@('darwin','amd64'),@('darwin','arm64'))){
   $os=$target[0];$arch=$target[1]
   $name="codex-orchestrator-$Version-$os-$arch"
   $bundle=Join-Path $out $name

@@ -67,7 +67,7 @@ A new, unreviewed revision returns an open task to In Progress. Move a card to *
 
 ## Getting started
 
-**Quick installation:** download a prebuilt package from [GitHub Releases](https://github.com/UGamerZ/codex-orchestrator/releases/latest). On Windows, extract it and double-click **Install.cmd**, then **Start.cmd** after setup. On Linux, run **sh install.sh**, then **sh start.sh**. The guided setup selects Trello boards/lists and connects Telegram. **Go is not required for release packages.** See the [installation guide](INSTALL.md).
+**Quick installation:** download a prebuilt package from [GitHub Releases](https://github.com/UGamerZ/codex-orchestrator/releases/latest). On Windows, extract it and double-click **Install.cmd**, then **Start.cmd** after setup. On Linux and macOS, run **sh install.sh**, then **sh start.sh**. macOS packages support Apple Silicon and Intel using a dedicated Colima Docker VM. The guided setup selects Trello boards/lists and connects Telegram. **Go is not required for release packages.** See the [installation guide](INSTALL.md).
 
 The instructions below also cover building from source.
 
@@ -94,6 +94,7 @@ cd codex-orchestrator
 | Backend | Platform | Setup guide |
 | --- | --- | --- |
 | **Docker** | Linux, or Windows using Linux Docker Engine through WSL2 | [Docker setup below](#docker-setup) |
+| **Docker via Colima** | macOS: Apple Silicon and Intel | [macOS installation](INSTALL.md#macos-apple-silicon-and-intel) |
 | **Restricted native execution** | Windows, without Docker or a VM | [Native Windows installation](NATIVE-INSTALL.md) |
 
 The PowerShell project wizard lets you choose the repository or local project, base branch, GitHub account, and Trello routing. It can offer to create a GitHub repository for a new local project. Configuration does not start agents.

@@ -67,7 +67,7 @@ flowchart LR
 
 ## Быстрый старт
 
-**Простая установка:** скачайте готовый пакет из [GitHub Releases](https://github.com/UGamerZ/codex-orchestrator/releases/latest). В Windows распакуйте архив и откройте **Install.cmd**, после настройки — **Start.cmd**. В Linux выполните **sh install.sh**, затем **sh start.sh**. Мастер поможет выбрать доску и списки Trello и подключить Telegram. **Go для релизных пакетов не нужен.** Подробнее: [инструкция по установке](INSTALL.md).
+**Простая установка:** скачайте готовый пакет из [GitHub Releases](https://github.com/UGamerZ/codex-orchestrator/releases/latest). В Windows распакуйте архив и откройте **Install.cmd**, после настройки — **Start.cmd**. В Linux и macOS выполните **sh install.sh**, затем **sh start.sh**. Для Mac есть сборки Apple Silicon и Intel с отдельной Docker-VM Colima. Мастер поможет выбрать доску и списки Trello и подключить Telegram. **Go для релизных пакетов не нужен.** Подробнее: [инструкция по установке](INSTALL.md).
 
 Ниже также описана установка из исходников.
 
@@ -94,6 +94,7 @@ cd codex-orchestrator
 | Вариант | Платформа | Инструкция |
 | --- | --- | --- |
 | **Docker** | Linux либо Windows с Linux Docker Engine через WSL2 | [Установка Docker ниже](#docker-setup) |
+| **Docker через Colima** | macOS: Apple Silicon и Intel | [Установка на Mac](INSTALL.md#macos-apple-silicon-и-intel) |
 | **Ограниченная среда Windows** | Windows без Docker и виртуальной машины | [Установка на Windows](NATIVE-INSTALL.md) |
 
 Мастер настройки на PowerShell позволяет выбрать репозиторий или локальный проект, базовую ветку, аккаунт GitHub и списки Trello. Для нового локального проекта он может предложить создание GitHub-репозитория. Настройка сама по себе не запускает агентов.

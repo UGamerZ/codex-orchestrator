@@ -9,6 +9,8 @@ Download an archive from [GitHub Releases](https://github.com/UGamerZ/codex-orch
 | `*-windows-amd64.zip` | 64-bit Intel/AMD Windows | Double-click `Install.cmd` |
 | `*-linux-amd64.tar.gz` | Intel/AMD Linux | `sh install.sh` |
 | `*-linux-arm64.tar.gz` | ARM64 Linux | `sh install.sh` |
+| `*-darwin-arm64.tar.gz` | macOS, Apple Silicon (M-series) | `sh install.sh` |
+| `*-darwin-amd64.tar.gz` | macOS, Intel | `sh install.sh` |
 
 Choose the named release archive, rather than GitHub's automatically generated **Source code** download, for a prebuilt controller. Packages are unsigned; SHA-256 checksums are supplied in `SHA256SUMS.txt`.
 
@@ -39,6 +41,41 @@ Native Windows setup requests Administrator access through Windows UAC. Run it a
 For Docker on Windows, first prepare Ubuntu WSL with a running **Linux Docker Engine**, as described in [README](README.md#docker-installation-notes). The wizard asks for the distribution name. This path does not configure Docker Desktop automatically.
 
 For startup recovery after you have tested a real task, optionally run `scripts/Install-Watchdog.ps1 -Config config.native.json` from an Administrator PowerShell. For a Docker setup, use `-Config config.json`. Automatic startup is not enabled by the installation wizard.
+
+## macOS (Apple Silicon and Intel)
+
+Use the **darwin-arm64** archive on Apple Silicon, or **darwin-amd64** on Intel. Linux binaries cannot run directly on macOS. Extract into a new private folder under your home directory, open Terminal in that folder and run:
+
+```sh
+sh install.sh
+```
+
+This installer uses **Colima with Docker**, in a dedicated VM/profile named `codex-orchestrator`. It does not use Docker Desktop or change your active Docker context. macOS 13 or later with virtualization support is required. Allow resources for a VM with 4 CPUs and 6 GiB RAM; 16 GiB of host RAM is recommended for two executors. The VM starts with host filesystem mounts disabled.
+
+Install [Homebrew](https://brew.sh/) if needed. The wizard offers to install missing dependencies after confirmation; you can also prepare them yourself:
+
+```sh
+brew install python git docker docker-compose colima gh
+```
+
+As on Linux, you need a Codex ChatGPT login, Trello credentials and a Telegram bot. The wizard configures the dedicated Docker context, applies network restrictions **inside the VM**, and runs isolation checks before enabling task execution. macOS firewall commands and privileged agent containers are not used. Missing Homebrew Compose discovery is handled by adding its plugin link only when no link/file already exists.
+
+After installation:
+
+```sh
+sh start.sh
+```
+
+Open http://127.0.0.1:8787. Stop the controller with `Ctrl+C`. After stopping/restarting the Colima VM, reapply the VM firewall and check before restarting the controller:
+
+```sh
+colima start codex-orchestrator --activate=false
+colima ssh codex-orchestrator -- sudo -n sh -s < scripts/network-policy.sh
+sh start.sh --check
+sh start.sh
+```
+
+The packages are unsigned and not notarized. If macOS blocks `bin/orchestrator`, review the block in **System Settings → Privacy & Security** and allow it only after verifying the release and checksum. The installer does not disable Gatekeeper or automatically remove quarantine flags. Go is not required for these archives.
 
 ## Linux with Docker
 

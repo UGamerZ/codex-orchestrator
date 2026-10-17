@@ -2,6 +2,9 @@
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 umask 077
+if [ "$(uname -s)" = Darwin ]; then
+  exec sh scripts/install-macos.sh
+fi
 echo 'Codex Orchestrator - Linux Docker installation'
 for tool in python3 git docker; do
   command -v "$tool" >/dev/null 2>&1 || { echo "Missing $tool. Install the prerequisites listed in INSTALL.md, then rerun." >&2; exit 1; }

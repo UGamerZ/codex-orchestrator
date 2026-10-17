@@ -47,10 +47,24 @@ class InstallerTests(unittest.TestCase):
             config = json.loads((root / "config.json").read_text())
             self.assertEqual(config["github_user"], "project-user")
             self.assertEqual(config["docker_distro"], "")
+            if wizard.sys.platform == "darwin":
+                self.assertEqual(config["docker_vm"], "colima")
             self.assertEqual(config["trello_done"], "d" * 24)
             self.assertEqual(config["telegram_chat"], 12345)
             self.assertEqual(config["codex_auth_file"], str(auth.resolve()))
             self.assertEqual(json.loads((root / "secrets" / "integrations.json").read_text())["telegram_token"], "dummy-bot")
+
+    def test_macos_setup_selects_colima(self):
+        with patch.object(wizard.sys, "platform", "darwin"):
+            self.test_full_github_setup_with_mocked_integrations()
+
+    def test_macos_refuses_to_reuse_incompatible_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config.json").write_text('{"backend":"docker","docker_distro":"Ubuntu"}')
+            with patch.object(wizard, "ROOT", root), patch.object(wizard.sys, "platform", "darwin"), patch("builtins.input", return_value="Y"):
+                with self.assertRaisesRegex(RuntimeError, "docker_vm=colima"):
+                    wizard.main()
 
     def test_private_json_and_symlink_refusal(self):
         with tempfile.TemporaryDirectory() as directory:

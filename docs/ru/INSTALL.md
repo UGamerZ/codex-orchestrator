@@ -9,6 +9,8 @@
 | `*-windows-amd64.zip` | Windows, Intel/AMD x64 | Двойной щелчок по `Install.cmd` |
 | `*-linux-amd64.tar.gz` | Linux, Intel/AMD x64 | `sh install.sh` |
 | `*-linux-arm64.tar.gz` | Linux, ARM64 | `sh install.sh` |
+| `*-darwin-arm64.tar.gz` | macOS, Apple Silicon (M-серия) | `sh install.sh` |
+| `*-darwin-amd64.tar.gz` | macOS, Intel | `sh install.sh` |
 
 Нужен именно архив с названием платформы. Автоматические архивы GitHub **Source code** не содержат готовую программу. Пакеты не имеют цифровой подписи; контрольные суммы находятся в `SHA256SUMS.txt`.
 
@@ -36,6 +38,41 @@ Windows-песочница запрашивает права администр�
 Для Docker сначала подготовьте Ubuntu WSL и работающий **Linux Docker Engine** по [инструкции](README.md#docker-installation-notes). Мастер спросит название дистрибутива. Автоматическая настройка Docker Desktop не выполняется.
 
 После проверки настоящей задачи можно отдельно включить watchdog скриптом `scripts/Install-Watchdog.ps1 -Config config.native.json` из PowerShell администратора. Для Docker укажите `-Config config.json`. Сам мастер автозапуск не включает.
+
+## macOS: Apple Silicon и Intel
+
+Для Apple Silicon скачайте архив **darwin-arm64**, для Intel — **darwin-amd64**. Linux-бинарники напрямую в macOS не запускаются. Распакуйте архив в новую приватную папку внутри домашнего каталога, откройте в ней Terminal и выполните:
+
+```sh
+sh install.sh
+```
+
+Установщик использует **Colima с Docker** в отдельной VM с профилем `codex-orchestrator`. Docker Desktop не используется, активный Docker-контекст не меняется. Нужна macOS 13 или новее с поддержкой виртуализации. VM получает 4 CPU и 6 ГиБ RAM; для двух исполнителей рекомендуется 16 ГиБ RAM на Mac. Общие папки с файловой системой Mac отключены.
+
+При необходимости установите [Homebrew](https://brew.sh/). Мастер предложит поставить недостающие зависимости после подтверждения. Либо заранее выполните:
+
+```sh
+brew install python git docker docker-compose colima gh
+```
+
+Далее мастер подключит выбранный проект, Trello, Telegram и вход Codex через ChatGPT. Сетевые правила применяются **внутри VM**, а не в macOS. До запуска задач выполняются проверки изоляции. Привилегированные контейнеры агентов не используются.
+
+Запуск после настройки:
+
+```sh
+sh start.sh
+```
+
+Панель — http://127.0.0.1:8787, остановка — `Ctrl+C`. После перезапуска Colima повторно примените правила VM и проверьте среду:
+
+```sh
+colima start codex-orchestrator --activate=false
+colima ssh codex-orchestrator -- sudo -n sh -s < scripts/network-policy.sh
+sh start.sh --check
+sh start.sh
+```
+
+Пакеты пока без подписи и notarization Apple. Если macOS блокирует `bin/orchestrator`, проверьте источник и контрольную сумму, затем рассмотрите разрешение запуска в **System Settings → Privacy & Security**. Установщик не отключает Gatekeeper и не снимает карантин автоматически. Go для этих архивов не нужен.
 
 ## Linux и Docker
 

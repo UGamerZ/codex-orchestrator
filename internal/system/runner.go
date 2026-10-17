@@ -85,12 +85,18 @@ func (r *Runner) container(id, role string) string {
 	return "codex-run-" + r.namespace() + "-" + id + "-" + role
 }
 func (r *Runner) dockerCommand(ctx context.Context, args ...string) *exec.Cmd {
+	if r.C.DockerVM == "colima" {
+		return exec.CommandContext(ctx, "docker", append([]string{"--context", "colima-codex-orchestrator"}, args...)...)
+	}
 	if r.C.DockerDistro != "" {
 		return exec.CommandContext(ctx, "wsl.exe", append([]string{"--distribution", r.C.DockerDistro, "--user", "root", "--exec", "docker"}, args...)...)
 	}
 	return exec.CommandContext(ctx, "docker", args...)
 }
 func (r *Runner) hostCommand(ctx context.Context, args ...string) *exec.Cmd {
+	if r.C.DockerVM == "colima" {
+		return exec.CommandContext(ctx, "colima", append([]string{"ssh", "codex-orchestrator", "--", "sudo", "-n", "--"}, args...)...)
+	}
 	if r.C.DockerDistro != "" {
 		return exec.CommandContext(ctx, "wsl.exe", append([]string{"--distribution", r.C.DockerDistro, "--user", "root", "--exec"}, args...)...)
 	}

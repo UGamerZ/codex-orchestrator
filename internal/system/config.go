@@ -19,6 +19,7 @@ type Config struct {
 	CodexPath         string `json:"codex_path"`
 	NativeVerified    bool   `json:"native_isolation_verified"`
 	DockerDistro      string `json:"docker_distro"`
+	DockerVM          string `json:"docker_vm,omitempty"`
 	Repository        string `json:"repository"`
 	BaseBranch        string `json:"base_branch"`
 	GithubUser        string `json:"github_user"`
@@ -64,6 +65,9 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if c.Backend != "docker" && c.Backend != "native-windows" {
 		return c, fmt.Errorf("unknown execution backend")
+	}
+	if c.DockerVM != "" && (c.DockerVM != "colima" || c.Backend != "docker" || c.DockerDistro != "") {
+		return c, fmt.Errorf("docker_vm supports only colima with the Docker backend and no WSL distribution")
 	}
 	if c.Backend == "native-windows" {
 		if c.NativeRoot == "" || c.CodexPath == "" {
