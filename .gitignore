@@ -9,6 +9,8 @@ state/
 secrets/
 bin/
 *.exe
+dist/
+__pycache__/
 
 environments.json*
 environment-state/

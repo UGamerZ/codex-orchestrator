@@ -67,6 +67,10 @@ A new, unreviewed revision returns an open task to In Progress. Move a card to *
 
 ## Getting started
 
+**Quick installation:** download a prebuilt package from [GitHub Releases](https://github.com/UGamerZ/codex-orchestrator/releases/latest). On Windows, extract it and double-click **Install.cmd**, then **Start.cmd** after setup. On Linux, run **sh install.sh**, then **sh start.sh**. The guided setup selects Trello boards/lists and connects Telegram. **Go is not required for release packages.** See the [installation guide](INSTALL.md).
+
+The instructions below also cover building from source.
+
 ### 1. Prepare the prerequisites
 
 | Requirement | Used for |

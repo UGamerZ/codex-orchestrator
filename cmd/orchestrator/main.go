@@ -16,6 +16,8 @@ import (
 	"codex-orchestrator/internal/system"
 )
 
+var version = "dev"
+
 func main() {
 	if e := run(); e != nil {
 		log.Print(e)
@@ -23,6 +25,10 @@ func main() {
 	}
 }
 func run() error {
+	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "--version") {
+		fmt.Printf("Codex Orchestrator %s\n", version)
+		return nil
+	}
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "proxy":

@@ -7,7 +7,8 @@ param(
  [string]$BaseBranch,
  [string]$LocalPath,
  [switch]$Publish,
- [switch]$LocalOnly
+ [switch]$LocalOnly,
+ [string]$CodexPath
 )
 $ErrorActionPreference='Stop'
 if ($Publish -and $LocalOnly) { throw 'Publish and LocalOnly are mutually exclusive' }
@@ -116,7 +117,7 @@ $settings.state_dir="./state/$projectName-$instanceID"
 if ($Backend -eq 'native-windows') {
  $settings.native_root="C:\ProgramData\CodexOrchestrator\instances\$projectName-$instanceID"
  $settings.native_isolation_verified=$false
- $settings.codex_path=Ask '' 'Full path to codex.exe' $settings.codex_path
+ $settings.codex_path=Ask $CodexPath 'Full path to codex.exe' $settings.codex_path
 }
 [IO.File]::WriteAllText([IO.Path]::GetFullPath($Config),($settings | ConvertTo-Json -Depth 10),$utf8)
 Write-Host "Saved $Config. Configure Trello, Telegram and Codex authentication, then run isolation setup. No agents were started."

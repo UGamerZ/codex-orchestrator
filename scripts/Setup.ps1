@@ -1,4 +1,4 @@
-param([string]$Config='config.json')
+param([string]$Config='config.json',[switch]$BuildFromSource)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projectRoot
@@ -19,8 +19,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Proxy setup failed' }
 & wsl.exe --distribution $dockerDistro --user root --exec sh "$linuxProjectRoot/scripts/network-policy.sh"
 if ($LASTEXITCODE -ne 0) { throw 'Agent network isolation policy failed' }
 New-Item -ItemType Directory -Path bin,secrets -Force | Out-Null
+if ($BuildFromSource -or !(Test-Path -LiteralPath 'VERSION' -PathType Leaf) -or !(Test-Path -LiteralPath 'bin/orchestrator.exe' -PathType Leaf)) {
 $goCommand=Get-Command go -ErrorAction SilentlyContinue
 $goPath=if ($goCommand) {$goCommand.Source} else {'C:\Program Files\Go\bin\go.exe'}
 & $goPath build -trimpath -o bin/orchestrator.exe ./cmd/orchestrator
 if ($LASTEXITCODE -ne 0) { throw 'Controller build failed' }
+}
 Write-Host 'Images and networks ready. Configure integrations before Start-Orchestrator.ps1 -Check.'
