@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -37,11 +36,7 @@ func (r *Runner) nativePreflight(ctx context.Context) error {
 	return nil
 }
 
-var nativeExecutionMu sync.Mutex
-
 func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
-	nativeExecutionMu.Lock()
-	defer nativeExecutionMu.Unlock()
 	result := RunResult{ID: j.ID, Role: role}
 	if e := NativeNetworkPolicy(false); e != nil {
 		result.Err = e
@@ -94,10 +89,6 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		return result
 	}
 	if e = prepareNativeAuth(r.C.AuthFile, nativeCodexHome(home)); e != nil {
-		result.Err = e
-		return result
-	}
-	if e = applyNativeTaskScope(ctx, r.C, p.Workspace, home); e != nil {
 		result.Err = e
 		return result
 	}
@@ -226,9 +217,6 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		if err := prepareNativeTaskRuntime(c, roleHome, p.Workspace, ""); err != nil {
 			return "", err
 		}
-		if err := applyNativeTaskScope(ctx, c, p.Workspace, roleHome); err != nil {
-			return "", err
-		}
 		args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, p.Workspace, roleHome, role)...)
 		args = append(args, "-C", p.Workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 		cmd := exec.CommandContext(ctx, c.CodexPath, args...)
@@ -268,9 +256,6 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		if err := prepareNativeTaskRuntime(c, peerHome, peer.Workspace, ""); err != nil {
 			return err
 		}
-		if err := applyNativeTaskScope(ctx, c, peer.Workspace, peerHome); err != nil {
-			return err
-		}
 		args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, peer.Workspace, peerHome, "executor")...)
 		script := common + "Set-Content -LiteralPath " + psQuote(peerFile) + " -Value 'peer-working' -NoNewline; if ((Get-Content -LiteralPath " + psQuote(peerFile) + " -Raw) -ne 'peer-working') { throw 'Peer workspace failed' }; if ((Get-Content -LiteralPath " + psQuote(peerReference) + " -Raw) -ne 'peer reference') { throw 'Peer reference failed' }"
 		args = append(args, "-C", peer.Workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
@@ -291,18 +276,25 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 	if _, e = run("reviewer", common+"if ((Get-Content -LiteralPath "+psQuote(marker)+" -Raw) -ne 'probe') { throw 'Review read failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Review absolute-path read failed' }; if ((Get-Content -LiteralPath "+psQuote(reviewMarker)+" -Raw) -ne 'trusted-review-probe') { throw 'Review material read failed' }; foreach ($target in @("+psQuote(marker)+","+psQuote(reviewMarker)+")) { $blocked=$false; try { Set-Content -LiteralPath $target -Value 'changed' -NoNewline } catch { $blocked=$true }; if (!$blocked) { throw 'Reviewer can write' } }; 'reviewer-ok'"); e != nil {
 		return e
 	}
-	for _, role := range []string{"executor", "reviewer"} {
-		script := common + "$blocked=$false; try { (Get-Content -LiteralPath " + psQuote(peerFile) + " -Raw) | Out-Null } catch { $blocked=$true }; if (!$blocked) { throw 'Cross-task read allowed' }; $blocked=$false; try { Set-Content -LiteralPath " + psQuote(peerFile) + " -Value 'changed' -NoNewline } catch { $blocked=$true }; if (!$blocked) { throw 'Cross-task write allowed' }; 'task-isolation-ok'"
-		if _, err = run(role, script); err != nil {
-			return err
-		}
-		referenceScript := strings.ReplaceAll(script, psQuote(peerFile), psQuote(peerReference))
-		if _, err = run(role, referenceScript); err != nil {
-			return err
+	// Separate runtimes retain independent work; native Windows shares an OS
+	// account and does not promise hostile-task filesystem isolation.
+	parallel := make(chan error, 2)
+	go func() { parallel <- runPeer() }()
+	go func() {
+		_, err := run("executor", common+"Set-Content -LiteralPath "+psQuote(marker)+" -Value 'probe' -NoNewline; if ((Get-Content -LiteralPath "+psQuote(marker)+" -Raw) -ne 'probe') { throw 'Own workspace failed' }")
+		parallel <- err
+	}()
+	var parallelErr error
+	for i := 0; i < 2; i++ {
+		if err := <-parallel; err != nil {
+			parallelErr = err
 		}
 	}
-	if err := runPeer(); err != nil {
-		return err
+	if parallelErr != nil {
+		return parallelErr
+	}
+	if content, err := os.ReadFile(peerFile); err != nil || string(content) != "peer-working" {
+		return fmt.Errorf("parallel peer workspace was changed")
 	}
 	// Use a native client: .NET constructors are blocked by PowerShell CLM.
 	curlProbe := func(address string) string {
@@ -335,6 +327,6 @@ func VerifyNativeIsolation(ctx context.Context, c Config) error {
 		return e
 	}
 	sum := sha256.Sum256(cli)
-	receipt, _ := json.Marshal(map[string]any{"version": 3, "codex_sha256": hex.EncodeToString(sum[:]), "verified_at": time.Now().UTC()})
+	receipt, _ := json.Marshal(map[string]any{"version": 4, "codex_sha256": hex.EncodeToString(sum[:]), "verified_at": time.Now().UTC()})
 	return os.WriteFile(filepath.Join(c.NativeRoot, "isolation.json"), receipt, 0600)
 }

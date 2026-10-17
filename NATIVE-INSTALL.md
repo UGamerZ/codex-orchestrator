@@ -84,11 +84,12 @@ state are not copied. Existing tasks may migrate the exact known rollout file
 after both its session ID and workspace have been verified. Old logs remain
 available to the dashboard without becoming another task's runtime state.
 
-Isolation receipt version 3 verifies task-local runtimes, reviewer read-only
-access, refusal to read/write a sibling task, and blocked internet and loopback
-connections. Checks work with PowerShell ConstrainedLanguage enabled.
+Isolation receipt version 4 verifies task-local runtimes, reviewer read-only
+access, simultaneous use of separate workspaces, and blocked internet and
+loopback connections. Checks work with PowerShell ConstrainedLanguage enabled.
 
-Native Windows serializes all agent roles and publication. The Windows sandbox
-uses a shared offline account, so the controller closes that account's access to
-other task workspaces, references, and runtime directories before each run.
-Docker keeps independent containers and supports up to two executors.
+Native Windows retains the configured concurrency of up to two executors.
+Each task has its own working copy and runtime state, but native sandboxes use
+a shared Windows account. Separate directories do not provide an OS security
+boundary between mutually untrusted agents. Use Docker or VMs when that boundary
+is required. The controller does not switch global task ACLs between runs.

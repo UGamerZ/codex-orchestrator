@@ -203,7 +203,7 @@ Interrupted or timed-out agent runs can retry up to three times, five minutes ap
 
 The trusted controller manages integrations and publication. Executors work on task branches; reviewers and managers receive read-only working copies.
 
-Each new task starts from a clean snapshot of the configured base branch in its own workspace. Native Windows agents also have a separate CODEX_HOME per task and role: conversation history, state databases, memories, caches, and scratch files are not reused across tasks. Review fixes and retries retain only that same task's work. Docker uses fresh containers with task-specific volumes. Native Windows runs one agent at a time to close access to other task directories before each run; Docker retains up to two executors. Native tasks still share the host OS and installed tools; dedicated database or service instances must be provisioned separately.
+Each new task starts from a clean snapshot of the configured base branch in its own workspace. Native Windows agents also have a separate CODEX_HOME per task and role: conversation history, state databases, memories, caches, and scratch files are not reused across tasks. Review fixes and retries retain only that same task's work. Docker uses fresh containers with task-specific volumes. Both backends retain the configured concurrency of up to two executors. Separate native task directories are not an OS security boundary between agents. Native tasks still share the host OS and installed tools; dedicated database or service instances must be provisioned separately.
 
 | Boundary | Enforcement |
 | --- | --- |
