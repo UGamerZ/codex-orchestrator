@@ -26,7 +26,7 @@ set -- --ignore-user-config --ignore-rules --skip-git-repo-check --json \
   --disable skill_mcp_dependency_install --disable skill_search \
   --disable image_generation --disable tool_suggest --disable auth_elicitation \
   -c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"' \
-  -c 'web_search="disabled"' -c "model_reasoning_effort=\"$effort\"" \
+  -c 'web_search="live"' -c "model_reasoning_effort=\"$effort\"" \
   --model "$model" --output-schema /opt/result.schema.json --output-last-message "$result"
 if [ -n "$session" ]; then
   codex exec resume "$@" "$session" -

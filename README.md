@@ -205,6 +205,8 @@ The trusted controller manages integrations and publication. Executors work on t
 
 Each new task starts from a clean snapshot of the configured base branch in its own workspace. Native Windows agents also have a separate CODEX_HOME per task and role: conversation history, state databases, memories, caches, and scratch files are not reused across tasks. Review fixes and retries retain only that same task's work. Docker uses fresh containers with task-specific volumes. Both backends retain the configured concurrency of up to two executors. Separate native task directories are not an OS security boundary between agents. Native tasks still share the host OS and installed tools; dedicated database or service instances must be provisioned separately.
 
+Agents can search the live web and read public documentation through the built-in search tool in Codex. Shell commands and project code retain the existing network restrictions. Search queries must not contain credentials, private source code, or customer data.
+
 | Boundary | Enforcement |
 | --- | --- |
 | **Git publication** | A separate broker ignores the agent's Git metadata and permits ordinary pushes only to the task's `codex/...` branch. |

@@ -232,7 +232,7 @@ func nativeExecArgs(c Config, j Job, role, workspace, home, result, schema strin
 	if role == "executor" && j.Fallback {
 		model, effort = c.FallbackModel, c.FallbackEffort
 	}
-	args = append(args, "-c", "web_search=\"disabled\"", "-c", "model_reasoning_effort="+strconv.Quote(effort), "--model", model, "--output-schema", schema, "--output-last-message", result)
+	args = append(args, "-c", "web_search=\"live\"", "-c", "model_reasoning_effort="+strconv.Quote(effort), "--model", model, "--output-schema", schema, "--output-last-message", result)
 	if j.Session != "" {
 		args = append(args, j.Session)
 	}

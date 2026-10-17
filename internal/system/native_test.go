@@ -31,7 +31,7 @@ func TestNativeNeverUsesFullAccess(t *testing.T) {
 			if strings.Contains(joined, "danger-full-access") || strings.Contains(joined, "bypass-approvals") {
 				t.Fatal("native full access")
 			}
-			for _, required := range []string{"approval_policy=\"never\"", "windows.sandbox=\"elevated\"", "network.enabled=false", "--disable apps", "--disable multi_agent", "--ignore-user-config"} {
+			for _, required := range []string{"approval_policy=\"never\"", "windows.sandbox=\"elevated\"", "network.enabled=false", "web_search=\"live\"", "--disable apps", "--disable multi_agent", "--ignore-user-config"} {
 				if !strings.Contains(joined, required) {
 					t.Errorf("missing %s", required)
 				}
