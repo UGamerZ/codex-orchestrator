@@ -45,12 +45,20 @@ func TestLiveNativePHPUnitSandbox(t *testing.T) {
 	config := filepath.Join(p.Workspace, "codeception.yml")
 	output := filepath.Join(home, "scratch", "unit-suite-probe.log")
 	script := "$ErrorActionPreference='Stop'; & " + psQuote(php) + " -v; if ($LASTEXITCODE -ne 0) {throw 'PHP unavailable'}; & " + psQuote(php) + " " + psQuote(codecept) + " " + psQuote(p.Workspace) + " build -c " + psQuote(config) + "; if ($LASTEXITCODE -ne 0) {throw 'Unit actor build failed'}; $ErrorActionPreference='Continue'; & " + psQuote(php) + " " + psQuote(codecept) + " " + psQuote(p.Workspace) + " run unit -o 'coverage: {enabled: false}' --no-colors -c " + psQuote(config) + " 2>&1 | Tee-Object -FilePath " + psQuote(output) + "; 'UNIT_EXIT='+$LASTEXITCODE"
-	args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, p.Workspace, home, "executor")...)
-	args = append(args, "-C", p.Workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	text := runLiveNativeSandbox(t, c, r, p.Workspace, home, script)
+	if !strings.Contains(text, "Tests:") && !strings.Contains(text, "OK (") {
+		t.Fatal("unit suite did not reach test results")
+	}
+}
+
+func runLiveNativeSandbox(t *testing.T, c Config, r *Runner, workspace, home, script string) string {
+	t.Helper()
+	args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, workspace, home, "executor")...)
+	args = append(args, "-C", workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.CodexPath, args...)
-	cmd.Dir = p.Workspace
+	cmd.Dir = workspace
 	cmd.Env = r.nativeEnv(home)
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x4 | 0x08000000}
 	job, err := newWindowsJob()
@@ -80,7 +88,99 @@ func TestLiveNativePHPUnitSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal("sandbox test launch failed", err)
 	}
-	if !strings.Contains(text, "Tests:") && !strings.Contains(text, "OK (") {
-		t.Fatal("unit suite did not reach test results")
+	return text
+}
+
+func TestLiveNativePHPParallelDirectoryAccess(t *testing.T) {
+	id := os.Getenv("ORCHESTRATOR_PHP_PROBE_TASK")
+	if id == "" {
+		t.Skip("operator-only live sandbox probe")
+	}
+	b, err := os.ReadFile(filepath.Join("..", "..", "config.native.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c Config
+	if err = json.Unmarshal(b, &c); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{C: c}
+	p, err := r.nativePaths(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(filepath.Dir(p.Publish), "executor-runtime")
+	if err = prepareNativeTestTools(c, Job{ID: id}, p.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	if err = prepareNativeTaskRuntime(c, home, p.Workspace, ""); err != nil {
+		t.Fatal(err)
+	}
+	probe := filepath.Join(nativeTaskTools(home), "directory-access-probe.php")
+	marker := filepath.Join(nativePHPTemp(home), "directory-access-probe.ready")
+	os.Remove(marker)
+	defer os.Remove(marker)
+	defer os.Remove(probe)
+	if err = os.WriteFile(probe, []byte(`<?php
+$workspace = $argv[1];
+for ($i = 0; $i < 60; $i++) {
+    clearstatcache(true);
+    if (!is_dir($workspace) || realpath($workspace) === false || !chdir($workspace)) {
+        for ($path = $workspace; strlen($path) > 3; $path = dirname($path)) {
+            fwrite(STDERR, $path . ' is_dir=' . (is_dir($path) ? 'yes' : 'no') . ' realpath=' . var_export(realpath($path), true) . "\n");
+        }
+        fwrite(STDERR, "PHP directory access failed during parallel sandbox setup\n"); exit(2);
+    }
+    if ($i === 0) { file_put_contents($argv[2], 'ready'); }
+    usleep(500000);
+}
+echo "PHP_PATH_OK\n";
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	peerID := fmt.Sprintf("php-acl-probe-%d", time.Now().UnixNano())
+	peer, err := r.nativePaths(peerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerHome := filepath.Join(filepath.Dir(peer.Publish), "executor-runtime")
+	if err = os.MkdirAll(peer.Workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(filepath.Dir(peer.Workspace)) // Own unique probe root; never follow runtime junctions.
+	if err = prepareNativeTaskRuntime(c, peerHome, peer.Workspace, ""); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan string, 1)
+	go func() {
+		defer close(done)
+		script := "& " + psQuote(filepath.Join(nativeTaskTools(home), "php", "php.exe")) + " " + psQuote(probe) + " " + psQuote(p.Workspace) + " " + psQuote(marker) + "; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+		done <- runLiveNativeSandbox(t, c, r, p.Workspace, home, script)
+	}()
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		if _, err = os.Stat(marker); err == nil {
+			break
+		}
+		select {
+		case output := <-done:
+			t.Fatalf("PHP probe failed before peer launch: %s", output)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("PHP probe did not start")
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	peerOutput := runLiveNativeSandbox(t, c, r, peer.Workspace, peerHome, "Start-Sleep -Seconds 3; 'peer-policy-applied'")
+	if !strings.Contains(peerOutput, "peer-policy-applied") {
+		t.Fatal("peer sandbox did not run")
+	}
+	if output := <-done; !strings.Contains(output, "PHP_PATH_OK") {
+		t.Fatal("PHP lost directory access", output)
+	}
+	launcher := "& " + psQuote(filepath.Join(nativeTaskTools(home), "php", "php.exe")) + " " + psQuote(filepath.Join(nativeTaskTools(home), "codecept.php")) + " " + psQuote(p.Workspace) + " --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+	if output := runLiveNativeSandbox(t, c, r, p.Workspace, home, launcher); !strings.Contains(output, "Codeception") {
+		t.Fatal("Codeception launcher failed", output)
 	}
 }

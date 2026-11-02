@@ -145,8 +145,8 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 	}
 	if runtime.GOOS == "windows" {
 		// PHP realpath/chdir must inspect ancestor directories. Reopen the path
-		// to this workspace, while explicitly denying every sibling on that path.
-		// No sibling workspace, control file or credential becomes readable.
+		// to this workspace, protecting sibling private state and unrelated host
+		// trees without denying another running task's directory traversal.
 		child := filepath.Clean(workspace)
 		for parent := filepath.Dir(child); parent != filepath.Dir(parent); parent = filepath.Dir(child) {
 			fs[parent] = "read"
@@ -158,6 +158,14 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 					}
 					path := filepath.Join(parent, entry.Name())
 					if !strings.EqualFold(path, child) {
+						if strings.EqualFold(parent, filepath.Join(c.NativeRoot, "jobs")) && entry.IsDir() {
+							// Deny ACLs apply to the shared Windows sandbox group. Denying
+							// a sibling task root breaks its PHP realpath/chdir while it
+							// runs in parallel. Protect its private state instead; task
+							// directories are not a hostile-agent security boundary.
+							fs[filepath.Join(path, "private")] = "deny"
+							continue
+						}
 						if !nativeCanSetACL(path) {
 							continue // Windows-owned paths retain their existing OS ACL.
 						}

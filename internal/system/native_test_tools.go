@@ -32,8 +32,17 @@ func grantNativeTestRead(path, rights string) error {
 		return nil
 	}
 	// Avoid repeatedly propagating an unchanged grant through old task trees.
-	if acl, err := exec.Command("icacls.exe", path).CombinedOutput(); err == nil && strings.Contains(string(acl), "\\CodexSandboxUsers:"+rights) {
-		return nil
+	if acl, err := exec.Command("icacls.exe", path).CombinedOutput(); err == nil {
+		staleDeny := rights == "(RX)" && strings.Contains(string(acl), "\\CodexSandboxUsers:(DENY)")
+		if staleDeny {
+			// Older parallel profiles denied sibling task roots. Remove that
+			// obsolete explicit deny only on these validated traversal directories.
+			if output, err := exec.Command("icacls.exe", path, "/remove:d", "CodexSandboxUsers").CombinedOutput(); err != nil {
+				return fmt.Errorf("repair stale task traversal deny: %w: %s", err, output)
+			}
+		} else if strings.Contains(string(acl), "\\CodexSandboxUsers:"+rights) {
+			return nil
+		}
 	}
 	if output, err := exec.Command("icacls.exe", path, "/grant", "CodexSandboxUsers:"+rights).CombinedOutput(); err != nil {
 		return fmt.Errorf("grant task test tools read/execute: %w: %s", err, output)
