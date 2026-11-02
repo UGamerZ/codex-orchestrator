@@ -174,16 +174,25 @@ See the [dashboard and watchdog guide](docs/DASHBOARD.md) for operation and star
 | Action | Where |
 | --- | --- |
 | Add work | Put a card in the configured **To Do** list. |
+| Add task requirements | Use the card description or Trello checklists. Checklist names, items, and checked states reach the manager, executor, and reviewer; an empty description is supported. |
 | Check the board now | Send `/check` in Telegram or use the dashboard. |
 | Check task states | Send `/status` or open **Tasks**. |
-| Answer an agent | Use **Reply** on its Telegram question, or answer in the dashboard. |
-| Request changes after review | Reply to the **Review complete** notification for an open system-owned task. |
+| Answer an agent | Use **Reply** on its Telegram question or any **Task still blocked** reminder for that question, or answer in the dashboard. |
+| Request changes after review | Reply to **Review complete** in Telegram, or comment on the open PR using the environment's configured GitHub account. |
 | Change projects | Use **Environments → Switch environment** after active workers finish. |
 | Remove a saved environment | Use **Delete environment** on an inactive profile. Files and task history are retained. |
 
 Environments keep their own tasks, workspaces, branches, logs, and sessions. They may share a Trello board and lists; only the selected environment processes work. Editing project identity or routing retains the previous setup as a separate environment.
 
+Every five minutes, maintenance checks completed tasks across saved environments, including inactive ones. Cards archived or moved outside To Do / In Progress / Done have their local working copy, publication clone, generated review files, and disposable CLI binary/temporary caches removed. All three managed lists, including Done, keep their copies. Running workers are never cleaned. Task history, agent logs/sessions, configuration, and credentials remain. For tasks without a Trello card, a matching merged PR must be confirmed on GitHub before cleanup. Explicitly returning a cleaned card to a managed list and requesting changes prepares a new working copy from the published revision.
+
 Questions and answers stay attached to their originating tasks, including inactive environments. Deleting an environment prevents old Telegram replies from restarting its agents.
+
+Blocked-task reminders accept replies directly; finding the original question is unnecessary. Reminder routing survives controller restarts and environment changes. Replies to an earlier, already answered question do not answer a different current blocker. Existing reminders can also be recognized when Telegram includes the complete unchanged question in the quoted bot message.
+
+Checklists are refreshed before each executor/reviewer turn and included in the trusted review description. Links in checklist items are handled like links in the description. The system reads checklist states without checking items off automatically.
+
+GitHub feedback is checked about once a minute in the active environment. PR conversation comments, inline comments, and submitted comment/request-changes reviews are passed to the task; edited comments are picked up again. Automated review comments and duplicate feedback are ignored. Archived cards, cards outside the managed lists, and closed or merged PRs are never restarted by GitHub polling. Other GitHub accounts' comments do not start agents.
 
 ### Models and limits
 
@@ -199,6 +208,8 @@ Defaults shipped in the example configurations:
 | Automatic fix rounds | 3 |
 | General run deadline | 45 minutes |
 | Reviewer deadline | 15 minutes, capped by the general deadline |
+
+Replying to an exhausted fix-limit question or explicitly retrying it resets the correction counter and grants a new full cycle using this configured limit. This applies to Telegram questions/reminders and dashboard answers, including inactive environments; automatic retries do not reset the budget.
 
 Models and reasoning levels are configurable; choose models available to your Codex account. The fallback is used when the primary model is explicitly unavailable. It does not bypass subscription limits: a rate limit delays the next attempt by an hour.
 

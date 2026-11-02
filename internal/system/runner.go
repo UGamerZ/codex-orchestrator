@@ -180,7 +180,7 @@ func (r *Runner) Broker(ctx context.Context, j *Job, operation string) (broker.R
 	}
 	if operation == "review" {
 		req.SHA = j.Head
-		req.Message = j.Title + "\n" + j.Description
+		req.Message = j.Title + "\n" + taskDescription(j)
 	}
 	if e = r.localRequest(ctx, &req); e != nil {
 		return out, e
@@ -232,11 +232,18 @@ func (r *Runner) initialize(ctx context.Context, id, role string) error {
 	return e
 }
 func (r *Runner) Run(j Job, role, prompt string) RunResult {
+	return r.RunContext(context.Background(), j, role, prompt)
+}
+
+func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) RunResult {
+	if err := parent.Err(); err != nil {
+		return RunResult{ID: j.ID, Role: role, Err: err}
+	}
 	if r.C.Backend == "native-windows" {
-		return r.nativeRun(j, role, prompt)
+		return r.nativeRun(parent, j, role, prompt)
 	}
 	result := RunResult{ID: j.ID, Role: role}
-	ctx, cancel := context.WithTimeout(context.Background(), agentRunTimeout(r.C, role))
+	ctx, cancel := context.WithTimeout(parent, agentRunTimeout(r.C, role))
 	defer cancel()
 	if !safeID.MatchString(j.ID) {
 		result.Err = fmt.Errorf("invalid job ID")
@@ -250,6 +257,9 @@ func (r *Runner) Run(j Job, role, prompt string) RunResult {
 		}
 	}
 	if role != "manager" && j.BaseSHA == "" {
+		if !j.CompletedCopiesCleanedAt.IsZero() && j.Head != "" {
+			j.BaseSHA = j.Head
+		}
 		p, e := r.Broker(ctx, &j, "prepare")
 		if e != nil {
 			result.Err = e

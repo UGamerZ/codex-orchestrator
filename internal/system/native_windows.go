@@ -17,8 +17,27 @@ import (
 )
 
 func (r *Runner) nativeRuntime() string { return filepath.Join(r.C.NativeRoot, "codex-runtime") }
+func nativeCanSetACL(path string) bool {
+	p, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return false
+	}
+	h, err := syscall.CreateFile(p, 0x40000, 7, nil, 3, 0x02000000, 0)
+	if err != nil {
+		return false
+	}
+	syscall.CloseHandle(h)
+	return true
+}
 func (r *Runner) nativeEnv(home string) []string {
-	return append(withoutEnv(nativeEnvironment(home), "CODEX_HOME"), "CODEX_HOME="+nativeCodexHome(home))
+	env := withoutEnv(nativeEnvironment(home), "CODEX_HOME")
+	env = append(env, "CODEX_HOME="+nativeCodexHome(home))
+	php := filepath.Join(nativeTaskTools(home), "php")
+	if _, err := os.Stat(filepath.Join(php, "php.exe")); err != nil {
+		return env
+	}
+	env = withoutEnv(env, "PATH")
+	return append(env, "PATH="+php+string(os.PathListSeparator)+os.Getenv("PATH"), "PHPRC="+filepath.Join(php, "php.ini"), "PHP_INI_SCAN_DIR=", "ORCHESTRATOR_TEST_TMP="+nativePHPTemp(home), "COMPOSER_HOME="+filepath.Join(home, "scratch", "composer"), "COMPOSER_CACHE_DIR="+filepath.Join(home, "scratch", "composer-cache"))
 }
 func (r *Runner) nativePreflight(ctx context.Context) error {
 	if e := NativeNetworkPolicy(false); e != nil {
@@ -36,13 +55,13 @@ func (r *Runner) nativePreflight(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
+func (r *Runner) nativeRun(parent context.Context, j Job, role, prompt string) RunResult {
 	result := RunResult{ID: j.ID, Role: role}
 	if e := NativeNetworkPolicy(false); e != nil {
 		result.Err = e
 		return result
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), agentRunTimeout(r.C, role))
+	ctx, cancel := context.WithTimeout(parent, agentRunTimeout(r.C, role))
 	defer cancel()
 	p, e := r.nativePaths(j.ID)
 	if e != nil {
@@ -56,6 +75,9 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		}
 	}
 	if role != "manager" && j.BaseSHA == "" {
+		if !j.CompletedCopiesCleanedAt.IsZero() && j.Head != "" {
+			j.BaseSHA = j.Head
+		}
 		b, e := r.nativeBroker(ctx, &j, "prepare")
 		if e != nil {
 			result.Err = e
@@ -78,6 +100,15 @@ func (r *Runner) nativeRun(j Job, role, prompt string) RunResult {
 		}
 	}
 	home := filepath.Join(filepath.Dir(p.Publish), role+"-runtime")
+	if role != "manager" {
+		if e = prepareNativeTestTools(r.C, j, p.Workspace); e != nil {
+			result.Err = e
+			return result
+		}
+	}
+	if _, err := os.Stat(filepath.Join(nativeTaskTools(home), "php", "php.exe")); err == nil {
+		prompt += "\nA task-local PHP runtime is available at " + filepath.Join(nativeTaskTools(home), "php", "php.exe") + ". It is on PATH with a clean php.ini and task-only temporary storage. A matching operator-approved Composer snapshot is copied to workspace/vendor; check vendor/autoload.php before testing. No network installation is permitted. For Codeception on Windows, invoke php " + filepath.Join(nativeTaskTools(home), "codecept.php") + " <absolute-workspace> build -c <absolute-codeception.yml>, then the same launcher with run unit -o 'coverage: {enabled: false}' --no-colors -c <absolute-codeception.yml>. This launcher sets the working directory correctly. Build actors only as executor; reviewers use existing actors and preserve source read-only access. Docker is not required for unit tests. Use only isolated test data and never production services.\n"
+	}
 	if e = os.MkdirAll(filepath.Join(home, "scratch"), 0700); e != nil {
 		result.Err = e
 		return result

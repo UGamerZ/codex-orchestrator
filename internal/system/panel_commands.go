@@ -147,10 +147,12 @@ func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 		} else if j.Stage == "waiting" && j.QuestionOrigin == "agent" {
 			return fmt.Errorf("this task needs an answer, not an empty retry")
 		}
+		renewFixBudget(j)
 		j.Question = ""
 		j.QuestionMessage = 0
 		j.RetryAt = time.Time{}
 		j.StallRetries = 0
+		j.NetworkRetries = 0
 		j.ModelBusyRetries = 0
 		j.InvalidResultRetries = 0
 		j.Stage = "queued"

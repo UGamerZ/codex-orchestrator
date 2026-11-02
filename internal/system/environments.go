@@ -257,6 +257,7 @@ func (c *Controller) activateProfile(id string, force bool) error {
 	c.recoverDataGuardPublications()
 	c.recoverExternalReviewBlockers()
 	c.recoverInterruptedAgents()
+	c.recoverNetworkFailures(ctx)
 	c.recoverDocumentationReviews(ctx)
 	c.recoverAuthorizedPublications()
 	c.recoverEmptyClarifications()
@@ -331,7 +332,7 @@ func (c *Controller) routeInactiveAnswer(ctx context.Context, m *TGMessage) (boo
 		}
 		if p.Deleted {
 			for _, j := range state.Jobs {
-				matched := j.QuestionMessage == m.Reply.ID
+				matched := questionReply(j, m.Reply)
 				for _, message := range j.CompletionMessages {
 					matched = matched || message == m.Reply.ID
 				}
@@ -356,11 +357,12 @@ func (c *Controller) routeInactiveAnswer(ctx context.Context, m *TGMessage) (boo
 			return true, err
 		}
 		for _, j := range state.Jobs {
-			if j.Stage != "waiting" || j.BoardCompleted || j.ClosedPR || j.QuestionMessage == 0 || j.QuestionMessage != m.Reply.ID {
+			if j.Stage != "waiting" || j.BoardCompleted || j.ClosedPR || !questionReply(j, m.Reply) {
 				continue
 			}
 			j.Answer = m.Text
 			j.Clarifications = append(j.Clarifications, Clarification{Role: j.Role, Origin: j.QuestionOrigin, Question: j.Question, Answer: m.Text, At: time.Now().UTC()})
+			renewFixBudget(j)
 			j.Question = ""
 			j.QuestionMessage = 0
 			j.RetryAt = time.Time{}

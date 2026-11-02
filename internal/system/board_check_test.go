@@ -45,6 +45,8 @@ func TestManualBoardCheck(t *testing.T) {
 				case strings.HasSuffix(r.URL.Path, "/cards"):
 					cardCalls++
 					return response(`[{"id":"new-card","name":"New task","idList":"todo","closed":false}]`), nil
+				case strings.HasSuffix(r.URL.Path, "/checklists"):
+					return response(`[]`), nil
 				default:
 					t.Fatalf("unexpected request: %s", r.URL.Path)
 					return nil, nil

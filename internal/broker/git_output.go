@@ -8,11 +8,13 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"codex-orchestrator/internal/netretry"
 )
 
 func gitOutput(ctx context.Context, operation, token string, command func() *exec.Cmd) ([]byte, error) {
 	attempts := 1
-	if operation == "push" {
+	if operation == "push" || operation == "fetch" || operation == "ls-remote" {
 		attempts = 3
 	}
 	var err error
@@ -24,6 +26,12 @@ func gitOutput(ctx context.Context, operation, token string, command func() *exe
 		}
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("trusted Git operation failed: %s: request cancelled", operation)
+		}
+		if operation != "push" {
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || !netretry.Temporary(string(exit.Stderr)) {
+				break
+			}
 		}
 		if attempt+1 < attempts {
 			select {

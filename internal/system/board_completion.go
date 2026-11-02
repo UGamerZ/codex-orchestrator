@@ -12,8 +12,11 @@ func cardOutsideLists(c Config, card Card) bool {
 	return card.Closed || (card.List != "" && card.List != c.Todo && card.List != c.Progress && card.List != c.Done)
 }
 func (c *Controller) completeBoardTask(j *Job) {
+	if cancel := c.ActiveRuns[j.ID]; cancel != nil {
+		cancel()
+	}
 	if !j.BoardCompleted {
-		c.panelEvent("completed", j.ID, "Card left the managed Trello lists; automatic work permanently stopped")
+		c.panelEvent("completed", j.ID, "Card archived or moved outside managed Trello lists; active run cancelled and further automatic work stopped")
 	}
 	j.BoardCompleted = true
 	j.Question = ""

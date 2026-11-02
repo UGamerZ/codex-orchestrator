@@ -103,7 +103,7 @@ func authorizeAsset(req *http.Request) {
 }
 
 func (a *API) TaskAssets(ctx context.Context, j *Job) ([]broker.Asset, error) {
-	urls := taskURL.FindAllString(j.Description+"\n"+j.Answer, -1)
+	urls := taskURL.FindAllString(taskDescription(j)+"\n"+j.Answer, -1)
 	if j.Card != "" {
 		var attachments []struct {
 			URL string `json:"url"`

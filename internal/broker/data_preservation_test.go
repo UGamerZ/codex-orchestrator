@@ -1,6 +1,13 @@
 package broker
 
-import "testing"
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestDataPreservationGuard(t *testing.T) {
 	for _, sql := range []string{"DELETE FROM settings", "delete\nfrom settings", "TRUNCATE TABLE settings", "TRUNCATE settings", "DROP TABLE settings", "DROP DATABASE app", "ALTER TABLE settings DROP COLUMN value"} {
@@ -26,5 +33,62 @@ func TestSQLCommentDoesNotBlockPublication(t *testing.T) {
 	}
 	if validateDataPreservationDiff([]byte(diff+"\n+DELETE FROM settings;")) == nil {
 		t.Fatal("actual deletion allowed")
+	}
+}
+
+func TestPublicationGuardIgnoresOnlyLineEndingChanges(t *testing.T) {
+	for _, destructive := range []bool{false, true} {
+		t.Run(map[bool]string{false: "existing-sql", true: "new-destructive-sql"}[destructive], func(t *testing.T) {
+			git := func(dir string, args ...string) {
+				t.Helper()
+				cmd := exec.Command("git", append([]string{"-c", "core.autocrlf=false"}, args...)...)
+				cmd.Dir = dir
+				if b, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("git %v: %v %s", args, err, b)
+				}
+			}
+			source := t.TempDir()
+			git(source, "init", "-b", "dev")
+			git(source, "config", "user.name", "Test")
+			git(source, "config", "user.email", "test@example.com")
+			base := "<?php\n$db->query('DELETE FROM expired_sessions WHERE expires < ?');\n$enabled = false;\n"
+			if err := os.WriteFile(filepath.Join(source, "app.php"), []byte(base), 0600); err != nil {
+				t.Fatal(err)
+			}
+			git(source, "add", "--all")
+			git(source, "commit", "-m", "Baseline")
+			bundlePath := filepath.Join(t.TempDir(), "source.bundle")
+			git(source, "bundle", "create", bundlePath, "--all")
+			bundle, err := os.ReadFile(bundlePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := t.TempDir()
+			p := Paths{filepath.Join(root, "workspace"), filepath.Join(root, "publish"), filepath.Join(root, "review")}
+			req := Request{Operation: "prepare", Local: true, Bundle: bundle, Base: "dev", Branch: "codex/line-endings"}
+			baseline, err := Execute(context.Background(), req, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			updated := strings.ReplaceAll(base, "false", "true")
+			if destructive {
+				updated += "$db->query('DROP TABLE settings');\n"
+			}
+			updated = strings.ReplaceAll(updated, "\n", "\r\n")
+			if err := os.WriteFile(filepath.Join(p.Workspace, "app.php"), []byte(updated), 0600); err != nil {
+				t.Fatal(err)
+			}
+			req.Operation = "publish"
+			req.SHA = baseline.SHA
+			req.Message = "Enable application feature"
+			_, err = Execute(context.Background(), req, p)
+			if destructive {
+				if err == nil || !strings.Contains(err.Error(), "data-preservation guard:") {
+					t.Fatalf("new destructive SQL not blocked: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("line endings blocked unchanged SQL: %v", err)
+			}
+		})
 	}
 }

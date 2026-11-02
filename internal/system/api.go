@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,6 +41,10 @@ func (a *API) gh(ctx context.Context, args ...string) ([]byte, error) {
 	cmd.Env = append(cmd.Env, "GH_TOKEN="+strings.TrimSpace(string(t)), "GH_HOST=github.com")
 	b, e := cmd.Output()
 	if e != nil {
+		var exit *exec.ExitError
+		if errors.As(e, &exit) {
+			return nil, githubOperationError(b, exit.Stderr)
+		}
 		return nil, fmt.Errorf("GitHub operation failed (check account access, connectivity or limits)")
 	}
 	return b, nil
@@ -157,7 +162,11 @@ func (a *API) CreatePR(ctx context.Context, j *Job) (int, string, error) {
 		return existing[0].Number, existing[0].URL, nil
 	}
 	body := j.Summary + "\n\nTrello: https://trello.com/c/" + j.Card + "\n\nCreated by an isolated executor. Merging is performed by a human."
-	b, e = a.gh(ctx, "api", "--method", "POST", "repos/"+a.C.Repository+"/pulls", "-f", "title="+j.Title, "-f", "head="+j.Branch, "-f", "base="+a.C.BaseBranch, "-f", "body="+body)
+	title := pullRequestTitle(j.Title)
+	if title != j.Title {
+		body = "Original Trello task title:\n\n" + j.Title + "\n\n" + body
+	}
+	b, e = a.gh(ctx, "api", "--method", "POST", "repos/"+a.C.Repository+"/pulls", "-f", "title="+title, "-f", "head="+j.Branch, "-f", "base="+a.C.BaseBranch, "-f", "body="+body)
 	if e != nil {
 		return 0, "", e
 	}
@@ -236,6 +245,9 @@ func (a *API) Move(ctx context.Context, card, list string) error {
 }
 
 type TGMessage struct {
+	From *struct {
+		IsBot bool `json:"is_bot"`
+	} `json:"from,omitempty"`
 	ID   int64  `json:"message_id"`
 	Text string `json:"text"`
 	Chat struct {

@@ -100,7 +100,7 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 			filePolicy = "always"
 		}
 		return gitOutput(ctx, args[0], r.Token, func() *exec.Cmd {
-			cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + filepath.Join(p.Publish, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "credential.helper=", "-c", "protocol.file.allow=" + filePolicy, "-c", "protocol.ext.allow=never"}, args...)...)
+			cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + filepath.Join(p.Publish, "disabled-hooks"), "-c", "core.autocrlf=false", "-c", "core.longpaths=true", "-c", "credential.helper=", "-c", "protocol.file.allow=" + filePolicy, "-c", "protocol.ext.allow=never"}, args...)...)
 			cmd.Dir = dir
 			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "SystemRoot=" + os.Getenv("SystemRoot"), "HOME=" + p.Publish, "TEMP=" + filepath.Join(p.Publish, "tmp"), "TMP=" + filepath.Join(p.Publish, "tmp"), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+r.Token))}
 			return cmd
@@ -250,6 +250,10 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		if _, e = git(p.Workspace, "init"); e != nil {
 			return e
 		}
+		// Persist for the executor's own Git reads as well as trusted staging.
+		if _, e = git(p.Workspace, "config", "--local", "core.longpaths", "true"); e != nil {
+			return e
+		}
 		if _, e = git(p.Workspace, "checkout", "-b", r.Branch); e != nil {
 			return e
 		}
@@ -361,7 +365,8 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		return json.NewEncoder(output).Encode(Result{SHA: parent, Changed: false})
 	}
 	// Reject destructive SQL before committing, pushing, or exporting a local bundle.
-	dataDiff, e := git(dir, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--unified=0")
+	// CRLF/LF conversion must not turn unchanged legacy SQL into new operations.
+	dataDiff, e := git(dir, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--ignore-cr-at-eol", "--unified=0")
 	if e != nil {
 		return e
 	}

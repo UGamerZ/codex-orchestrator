@@ -85,7 +85,7 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 	if operation == "review" {
 		req.SHA = j.Head
 		req.PR = j.PR
-		req.Message = j.Title + "\n" + j.Description
+		req.Message = j.Title + "\n" + taskDescription(j)
 	}
 	if e = r.localRequest(ctx, &req); e != nil {
 		return broker.Result{}, e
@@ -110,6 +110,10 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 		fs[c.LocalRepository] = "deny"
 	}
 	fs[filepath.Join(workspace, broker.ReviewDirectory)] = "read"
+	fs[nativeTaskTools(home)] = "read"
+	if _, err := os.Stat(filepath.Join(nativeTaskTools(home), "php", "php.exe")); err == nil {
+		fs[nativePHPTemp(home)] = "write"
+	}
 	if runtime.GOOS == "windows" {
 		for drive := 'C'; drive <= 'Z'; drive++ {
 			root := string(drive) + ":\\"
@@ -138,6 +142,38 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 	}
 	if systemRoot := os.Getenv("SystemRoot"); systemRoot != "" {
 		fs[systemRoot] = "read"
+	}
+	if runtime.GOOS == "windows" {
+		// PHP realpath/chdir must inspect ancestor directories. Reopen the path
+		// to this workspace, while explicitly denying every sibling on that path.
+		// No sibling workspace, control file or credential becomes readable.
+		child := filepath.Clean(workspace)
+		for parent := filepath.Dir(child); parent != filepath.Dir(parent); parent = filepath.Dir(child) {
+			fs[parent] = "read"
+			entries, err := os.ReadDir(parent)
+			if err == nil {
+				for _, entry := range entries {
+					if entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+						continue
+					}
+					path := filepath.Join(parent, entry.Name())
+					if !strings.EqualFold(path, child) {
+						if !nativeCanSetACL(path) {
+							continue // Windows-owned paths retain their existing OS ACL.
+						}
+						if entry.IsDir() {
+							if _, readErr := os.ReadDir(path); os.IsPermission(readErr) {
+								continue // Already inaccessible OS-owned directory.
+							}
+						}
+						if _, exists := fs[path]; !exists {
+							fs[path] = "deny"
+						}
+					}
+				}
+			}
+			child = parent
+		}
 	}
 	// Explicit runtime tools, never the whole XAMPP directory or GitHub credential store.
 	for _, program := range []string{"git", "php"} {

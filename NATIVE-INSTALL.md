@@ -94,3 +94,26 @@ Each task has its own working copy and runtime state, but native sandboxes use
 a shared Windows account. Separate directories do not provide an OS security
 boundary between mutually untrusted agents. Use Docker or VMs when that boundary
 is required. The controller does not switch global task ACLs between runs.
+
+## PHP unit tests
+
+Pause scheduling in the dashboard and wait for active workers to finish. An
+administrator can provision PHP and the dependencies locked by a task:
+
+```powershell
+.\scripts\Prepare-NativePHPTests.ps1 -Task <task-id> -Config config.native.json `
+  -PHPSource C:\xampp\php -ComposerPhar C:\ProgramData\ComposerSetup\bin\composer.phar
+```
+
+This operator step downloads locked packages with Composer scripts and plugins
+disabled; it does not run project code on the host. Subsequent agent runs receive
+their own PHP runtime, clean configuration and matching dependency snapshot.
+Composer manifests and lockfiles must match exactly for dependencies to be copied.
+Other projects keep working but need their own approved dependencies. Agents stay
+offline. Temporary test files stay within the task and the runtime is removed with
+completed task copies. No Docker daemon is needed for PHP unit suites.
+
+The agent receives an absolute Codeception launcher path that sets the project
+directory correctly. Project-specific test configuration must contain synthetic
+values, never production credentials. Suites requiring a database or network
+service still require a separately provisioned isolated service environment.
