@@ -118,6 +118,7 @@ func (c *Controller) createEnvironment(input *EnvironmentInput) error {
 	}
 	id := "env-" + hex.EncodeToString(random)
 	config := c.C
+	config.TestWritePaths = nil // Runtime write grants belong to the selected project.
 	config.ProjectMode = input.Mode
 	config.Repository = strings.TrimSpace(input.Repository)
 	config.BaseBranch = strings.TrimSpace(input.Branch)

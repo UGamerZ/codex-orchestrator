@@ -83,6 +83,7 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 		req.PR = j.PR
 	}
 	if operation == "review" {
+		req.TestWritePaths = r.C.TestWritePaths
 		req.SHA = j.Head
 		req.PR = j.PR
 		req.Message = j.Title + "\n" + taskDescription(j)
@@ -112,8 +113,10 @@ func nativePolicyArgs(c Config, workspace, home, role string) []string {
 	fs[filepath.Join(workspace, broker.ReviewDirectory)] = "read"
 	fs[nativeTaskTools(home)] = "read"
 	if role == "reviewer" {
-		if _, err := os.Stat(nativeReviewTests(home)); err == nil {
-			fs[nativeReviewTests(home)] = "write"
+		if roots, err := broker.ReviewTestWriteRoots(workspace, c.TestWritePaths); err == nil {
+			for _, root := range roots {
+				fs[root] = "write"
+			}
 		}
 	}
 	if _, err := os.Stat(filepath.Join(nativeTaskTools(home), "php", "php.exe")); err == nil {

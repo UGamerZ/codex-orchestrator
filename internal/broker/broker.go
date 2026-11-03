@@ -21,6 +21,7 @@ import (
 )
 
 type Request struct {
+	TestWritePaths     []string
 	AdoptTaskHead      bool
 	AllowWorkflowEdits bool
 	Assets             []Asset
@@ -156,6 +157,9 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		return e
 	}
 	if r.Operation == "review" {
+		if err := PrepareReviewTestWrites(p.Workspace, r.TestWritePaths); err != nil {
+			return err
+		}
 		if r.SHA == "" {
 			return fmt.Errorf("review SHA required")
 		}

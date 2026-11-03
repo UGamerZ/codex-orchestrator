@@ -80,6 +80,9 @@ func (c *Controller) updateEnvironment(id string, input *EnvironmentInput, patch
 	if strings.EqualFold(filepath.Clean(old.Config.LocalRepository), filepath.Clean(next.LocalRepository)) {
 		next.LocalRepository = old.Config.LocalRepository
 	}
+	if old.Config.ProjectMode != next.ProjectMode || !strings.EqualFold(old.Config.Repository, next.Repository) || !strings.EqualFold(old.Config.LocalRepository, next.LocalRepository) {
+		next.TestWritePaths = nil
+	}
 	validator := &Controller{C: next, ConfigPath: c.ConfigPath}
 	next, err = validator.validatedPanelConfig(patch)
 	if err != nil {

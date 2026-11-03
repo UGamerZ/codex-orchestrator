@@ -1,6 +1,7 @@
 package system
 
 import (
+	"codex-orchestrator/internal/broker"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -47,14 +48,12 @@ func TestLiveNativePHPUnitSandbox(t *testing.T) {
 	if err = prepareNativeTaskRuntime(c, home, p.Workspace, ""); err != nil {
 		t.Fatal(err)
 	}
+	if err = broker.PrepareReviewTestWrites(p.Workspace, c.TestWritePaths); err != nil {
+		t.Fatal(err)
+	}
 	testRoot := p.Workspace
 	prefix := ""
 	if role == "reviewer" {
-		testRoot, err = prepareNativeReviewTests(c, id, p.Workspace)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(testRoot)
 		sentinel := filepath.Join(p.Workspace, "reviewer-readonly-probe.txt")
 		if err = os.WriteFile(sentinel, []byte("original"), 0600); err != nil {
 			t.Fatal(err)

@@ -180,6 +180,7 @@ func (r *Runner) Broker(ctx context.Context, j *Job, operation string) (broker.R
 	}
 	if operation == "review" {
 		req.SHA = j.Head
+		req.TestWritePaths = r.C.TestWritePaths
 		req.Message = j.Title + "\n" + taskDescription(j)
 	}
 	if e = r.localRequest(ctx, &req); e != nil {
@@ -282,7 +283,7 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 		}
 	}
 	if role == "reviewer" {
-		prompt += "\nFor checks that generate files, use the fresh disposable project copy at /home/codex/review-tests. Build actors and run tests there, with configuration paths inside that copy. /workspace remains read-only. Do not edit implementation or weaken tests to obtain a passing result. Report findings against original source paths and disclose actual test results or missing dependencies. The test copy is removed when the run exits.\n"
+		prompt += "\nRun checks directly in /workspace. The original source is read-only; only operator-configured test output/runtime directories are writable. No project copy is created. Do not modify implementation or weaken tests. Report actual test results and missing dependencies.\n"
 	}
 	if e := r.initialize(ctx, j.ID, role); e != nil {
 		result.Err = e
@@ -307,9 +308,6 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 		stopCtx, stop := context.WithTimeout(context.Background(), 30*time.Second)
 		defer stop()
 		r.docker(stopCtx, nil, "rm", "-f", name)
-		if role == "reviewer" {
-			r.cleanupDockerReviewTests(stopCtx, j.ID)
-		}
 	}()
 	mount := "type=volume,src=" + r.volume(j.ID, "workspace") + ",dst=/workspace"
 	if role != "executor" {
@@ -319,6 +317,11 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 	if role != "manager" {
 		idx := len(args) - 5
 		extra := []string{"--mount", "type=volume,src=" + r.volume(j.ID, "review") + ",dst=/review-input,readonly", "-e", "ORCHESTRATOR_ROLE=" + role}
+		if role == "reviewer" {
+			for _, rel := range r.C.TestWritePaths {
+				extra = append(extra, "--mount", "type=volume,src="+r.volume(j.ID, "workspace")+",dst=/workspace/"+rel+",volume-subpath="+rel)
+			}
+		}
 		args = append(args[:idx], append(extra, args[idx:]...)...)
 	}
 	// The image writes its final response to stdout behind a fixed marker; JSONL preserves

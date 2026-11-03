@@ -19,20 +19,6 @@ test "$1" = "run"
 model="$2"
 effort="$3"
 session="${4:-}"
-if [ "${ORCHESTRATOR_ROLE:-}" = "reviewer" ]; then
-  # Fixed role-private paths; never traverse links left by a previous agent.
-  test ! -L /home/codex/review-tests
-  rm -rf -- /home/codex/review-tests
-  mkdir /home/codex/review-tests
-  test ! -L /home/codex/review-tests.tar
-  rm -f /home/codex/review-tests.tar
-  trap 'rm -rf -- /home/codex/review-tests; rm -f /home/codex/review-tests.tar' EXIT
-  tar -C /workspace --exclude='./.git' --exclude='./.orchestrator-review' \
-    --exclude='./tests/_output' --exclude='./vendor/.orchestrator-tmp' \
-    -cf /home/codex/review-tests.tar .
-  tar -C /home/codex/review-tests -xf /home/codex/review-tests.tar
-  rm -f /home/codex/review-tests.tar
-fi
 result="/home/codex/result.json"
 rm -f "$result"
 # Strip default integrations too: a fresh CODEX_HOME alone does not disable

@@ -219,10 +219,11 @@ Interrupted or timed-out agent runs can retry up to three times, five minutes ap
 
 The trusted controller manages integrations and publication. Executors work on task branches; reviewers and managers receive read-only working copies.
 
-Reviewers receive a fresh writable test copy for builds, fixtures and test output;
-the original reviewed source stays read-only. The copy is removed after the review,
-including cleanup of interrupted runs. Docker installations must rebuild the worker
-image after updating to use this behavior.
+Reviewers run checks directly in the task workspace. `test_write_paths` grants
+write access only to operator-selected project-relative runtime/output directories,
+such as `files`, `tests/_output` and `tests/_support/_generated`. Source and Git
+metadata stay read-only; no second project copy is created. Docker uses writable
+subpath mounts for these directories and requires an engine supporting volume subpaths.
 
 Each new task starts from a clean snapshot of the configured base branch in its own workspace. Native Windows agents also have a separate CODEX_HOME per task and role: conversation history, state databases, memories, caches, and scratch files are not reused across tasks. Review fixes and retries retain only that same task's work. Docker uses fresh containers with task-specific volumes. Both backends retain the configured concurrency of up to two executors. Separate native task directories are not an OS security boundary between agents. Native tasks still share the host OS and installed tools; dedicated database or service instances must be provisioned separately.
 

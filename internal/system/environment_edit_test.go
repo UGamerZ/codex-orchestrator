@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -37,6 +38,7 @@ func TestInactiveEnvironmentProjectEditRetainsPreviousSetup(t *testing.T) {
 	c := environmentFixture(t)
 	r, _ := readRegistry(c.ConfigPath)
 	old := EnvironmentProfile{ID: "other", Name: "Other", Config: c.C}
+	old.Config.TestWritePaths = []string{"files"}
 	old.Config.StateDir = t.TempDir()
 	r.Profiles = append(r.Profiles, old)
 	writePrivateJSON(registryPath(c.ConfigPath), r)
@@ -55,7 +57,10 @@ func TestInactiveEnvironmentProjectEditRetainsPreviousSetup(t *testing.T) {
 		t.Fatal("edit switched or lost previous setup")
 	}
 	next, previous := r.Profiles[1], r.Profiles[2]
-	if next.ID != old.ID || next.Config.StateDir == old.Config.StateDir || next.Config.Repository != "second/project" || previous.Config != old.Config || !strings.HasPrefix(previous.ID, "previous-") {
+	if len(next.Config.TestWritePaths) != 0 {
+		t.Fatal("project-specific write permissions leaked into another repository")
+	}
+	if next.ID != old.ID || next.Config.StateDir == old.Config.StateDir || next.Config.Repository != "second/project" || !reflect.DeepEqual(previous.Config, old.Config) || !strings.HasPrefix(previous.ID, "previous-") {
 		t.Fatal("project state mixed or original config lost")
 	}
 	after, _ := os.ReadFile(filepath.Join(old.Config.StateDir, "state.json"))
