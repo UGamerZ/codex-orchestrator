@@ -117,3 +117,16 @@ The agent receives an absolute Codeception launcher path that sets the project
 directory correctly. Project-specific test configuration must contain synthetic
 values, never production credentials. Suites requiring a database or network
 service still require a separately provisioned isolated service environment.
+
+Reviewers run tests in a fresh writable copy at `jobs/<task-id>/reviewer-tests`.
+Their original workspace and trusted review context stay read-only. The copy
+includes prepared dependencies and project-internal links, excludes Git metadata
+and old test output, and is deleted when the review exits. Interrupted leftovers
+are also included in completed-task cleanup. Generated actors, caches and fixtures
+therefore do not require write access to the reviewed source.
+
+For project-specific synthetic test configuration, pass
+`-TestFixturesDirectory <directory>` to `Prepare-NativePHPTests.ps1`. Its relative
+file layout is preserved. Fixtures are bound to the configured repository and exact
+Composer files, copied only when missing, and never replace existing project files.
+Keep private/local test configuration in the project's ignored paths.

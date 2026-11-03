@@ -33,18 +33,44 @@ func TestLiveNativePHPUnitSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	home := filepath.Join(filepath.Dir(p.Publish), "executor-runtime")
+	role := os.Getenv("ORCHESTRATOR_PHP_PROBE_ROLE")
+	if role == "" {
+		role = "executor"
+	}
+	if role != "executor" && role != "reviewer" {
+		t.Fatal("invalid probe role")
+	}
+	home := filepath.Join(filepath.Dir(p.Publish), role+"-runtime")
 	if err = prepareNativeTestTools(c, Job{ID: id}, p.Workspace); err != nil {
 		t.Fatal(err)
 	}
 	if err = prepareNativeTaskRuntime(c, home, p.Workspace, ""); err != nil {
 		t.Fatal(err)
 	}
+	testRoot := p.Workspace
+	prefix := ""
+	if role == "reviewer" {
+		testRoot, err = prepareNativeReviewTests(c, id, p.Workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(testRoot)
+		sentinel := filepath.Join(p.Workspace, "reviewer-readonly-probe.txt")
+		if err = os.WriteFile(sentinel, []byte("original"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(sentinel)
+		prefix = "$ErrorActionPreference='Stop'; $blocked=$false; try { Set-Content -LiteralPath " + psQuote(sentinel) + " -Value 'changed' } catch { $blocked=$true }; if (!$blocked) { throw 'Reviewer can modify original source' }; 'ORIGINAL_SOURCE_READONLY'; "
+	}
 	php := filepath.Join(nativeTaskTools(home), "php", "php.exe")
 	codecept := filepath.Join(nativeTaskTools(home), "codecept.php")
-	config := filepath.Join(p.Workspace, "codeception.yml")
+	config := filepath.Join(testRoot, "codeception.yml")
 	output := filepath.Join(home, "scratch", "unit-suite-probe.log")
-	script := "$ErrorActionPreference='Stop'; & " + psQuote(php) + " -v; if ($LASTEXITCODE -ne 0) {throw 'PHP unavailable'}; & " + psQuote(php) + " " + psQuote(codecept) + " " + psQuote(p.Workspace) + " build -c " + psQuote(config) + "; if ($LASTEXITCODE -ne 0) {throw 'Unit actor build failed'}; $ErrorActionPreference='Continue'; & " + psQuote(php) + " " + psQuote(codecept) + " " + psQuote(p.Workspace) + " run unit -o 'coverage: {enabled: false}' --no-colors -c " + psQuote(config) + " 2>&1 | Tee-Object -FilePath " + psQuote(output) + "; 'UNIT_EXIT='+$LASTEXITCODE"
+	selection := ""
+	if test := os.Getenv("ORCHESTRATOR_PHP_PROBE_TEST"); test != "" {
+		selection = " " + psQuote(test)
+	}
+	script := prefix + "$ErrorActionPreference='Stop'; & " + psQuote(php) + " -v; if ($LASTEXITCODE -ne 0) {throw 'PHP unavailable'}; & " + psQuote(php) + " " + psQuote(codecept) + " " + psQuote(testRoot) + " build -c " + psQuote(config) + "; if ($LASTEXITCODE -ne 0) {throw 'Unit actor build failed'}; $ErrorActionPreference='Continue'; & " + psQuote(php) + " " + psQuote(codecept) + " " + psQuote(testRoot) + " run unit" + selection + " -o 'coverage: {enabled: false}' --no-colors -c " + psQuote(config) + " 2>&1 | Tee-Object -FilePath " + psQuote(output) + "; 'UNIT_EXIT='+$LASTEXITCODE"
 	text := runLiveNativeSandbox(t, c, r, p.Workspace, home, script)
 	if !strings.Contains(text, "Tests:") && !strings.Contains(text, "OK (") {
 		t.Fatal("unit suite did not reach test results")
@@ -53,7 +79,8 @@ func TestLiveNativePHPUnitSandbox(t *testing.T) {
 
 func runLiveNativeSandbox(t *testing.T, c Config, r *Runner, workspace, home, script string) string {
 	t.Helper()
-	args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, workspace, home, "executor")...)
+	role := strings.TrimSuffix(filepath.Base(home), "-runtime")
+	args := append([]string{"sandbox", "--permission-profile", "orchestrator"}, nativePolicyArgs(c, workspace, home, role)...)
 	args = append(args, "-C", workspace, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()

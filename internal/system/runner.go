@@ -281,6 +281,9 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 			return result
 		}
 	}
+	if role == "reviewer" {
+		prompt += "\nFor checks that generate files, use the fresh disposable project copy at /home/codex/review-tests. Build actors and run tests there, with configuration paths inside that copy. /workspace remains read-only. Do not edit implementation or weaken tests to obtain a passing result. Report findings against original source paths and disclose actual test results or missing dependencies. The test copy is removed when the run exits.\n"
+	}
 	if e := r.initialize(ctx, j.ID, role); e != nil {
 		result.Err = e
 		return result
@@ -301,9 +304,12 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 		return result
 	}
 	defer func() {
-		stopCtx, stop := context.WithTimeout(context.Background(), 15*time.Second)
+		stopCtx, stop := context.WithTimeout(context.Background(), 30*time.Second)
 		defer stop()
 		r.docker(stopCtx, nil, "rm", "-f", name)
+		if role == "reviewer" {
+			r.cleanupDockerReviewTests(stopCtx, j.ID)
+		}
 	}()
 	mount := "type=volume,src=" + r.volume(j.ID, "workspace") + ",dst=/workspace"
 	if role != "executor" {
@@ -312,7 +318,7 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 	args := []string{"run", "--rm", "-i", "--name", name, "--label", "codex-orchestrator=" + r.namespace(), "--network", r.C.Network, "--dns", "127.0.0.1", "--add-host", "proxy:172.30.250.2", "--read-only", "--user", "1000:1000", "--cap-drop=ALL", "--security-opt=no-new-privileges:true", "--pids-limit=256", "--memory=2g", "--cpus=2", "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m", "--mount", mount, "--mount", "type=volume,src=" + r.volume(j.ID, role+"-home") + ",dst=/home/codex", "-e", "HTTPS_PROXY=" + r.C.Proxy, "-e", "HTTP_PROXY=" + r.C.Proxy, "-e", "ALL_PROXY=" + r.C.Proxy, "-e", "NO_PROXY=", "-e", "CODEX_HOME=/home/codex/.codex", r.C.Image, "run", model, effort, j.Session}
 	if role != "manager" {
 		idx := len(args) - 5
-		extra := []string{"--mount", "type=volume,src=" + r.volume(j.ID, "review") + ",dst=/review-input,readonly"}
+		extra := []string{"--mount", "type=volume,src=" + r.volume(j.ID, "review") + ",dst=/review-input,readonly", "-e", "ORCHESTRATOR_ROLE=" + role}
 		args = append(args[:idx], append(extra, args[idx:]...)...)
 	}
 	// The image writes its final response to stdout behind a fixed marker; JSONL preserves

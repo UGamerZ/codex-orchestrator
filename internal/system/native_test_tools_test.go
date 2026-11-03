@@ -44,6 +44,16 @@ func TestNativeApprovedTestToolsAreTaskLocalAndRequireMatchingLock(t *testing.T)
 		os.WriteFile(dep, []byte("task changed dependency"), 0600)
 	}
 	w := filepath.Join(c.NativeRoot, "jobs", "task-b", "workspace")
+	if err := os.RemoveAll(filepath.Join(w, "vendor")); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareNativeTestTools(c, Job{ID: "task-b"}, w); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(w, "vendor", "package", "data.txt")); err != nil || string(b) != "approved dependency" {
+		t.Fatal("stale ready marker prevented dependency restoration", err)
+	}
+	os.WriteFile(filepath.Join(w, "vendor", "package", "data.txt"), []byte("task changed dependency"), 0600)
 	os.WriteFile(filepath.Join(w, "composer.lock"), []byte("modified lock"), 0600)
 	if err := prepareNativeTestTools(c, Job{ID: "task-b"}, w); err != nil {
 		t.Fatal("unmatched snapshot blocked coding work", err)
@@ -67,5 +77,21 @@ func TestTestToolCopyRejectsLinkedDestination(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "data")); !os.IsNotExist(err) {
 		t.Fatal("wrote outside task")
+	}
+}
+
+func TestApprovedTestFixturesNeverOverwriteProjectFiles(t *testing.T) {
+	workspace, source := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(workspace, "existing.ini"), []byte("project"), 0600)
+	os.WriteFile(filepath.Join(source, "existing.ini"), []byte("fixture"), 0600)
+	os.WriteFile(filepath.Join(source, ".env.testing"), []byte("APP_ENV=testing"), 0600)
+	if err := copyMissingTestFixtures(workspace, source); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(workspace, "existing.ini")); string(b) != "project" {
+		t.Fatal("existing project resource overwritten")
+	}
+	if b, _ := os.ReadFile(filepath.Join(workspace, ".env.testing")); string(b) != "APP_ENV=testing" {
+		t.Fatal("approved test fixture not provisioned")
 	}
 }

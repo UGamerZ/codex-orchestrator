@@ -14,11 +14,14 @@ import (
 )
 
 type nativePHPProfile struct {
-	Version      int    `json:"version"`
-	PHP          string `json:"php"`
-	Vendor       string `json:"vendor"`
-	ManifestHash string `json:"composer_manifest_sha256"`
-	LockHash     string `json:"composer_lock_sha256"`
+	Version         int    `json:"version"`
+	PHP             string `json:"php"`
+	Vendor          string `json:"vendor"`
+	ManifestHash    string `json:"composer_manifest_sha256"`
+	LockHash        string `json:"composer_lock_sha256"`
+	Fixtures        string `json:"fixtures,omitempty"`
+	Repository      string `json:"repository,omitempty"`
+	LocalRepository string `json:"local_repository,omitempty"`
 }
 
 func nativeTaskTools(home string) string { return filepath.Join(filepath.Dir(home), "tools") }
@@ -73,7 +76,7 @@ func plainToolPath(base, target string) error {
 	return nil
 }
 
-func copyToolSnapshot(base, source, destination string) error {
+func copyToolSnapshot(base, source, destination string, exclude ...func(string) bool) error {
 	if err := plainToolPath(base, destination); err != nil {
 		return err
 	}
@@ -92,6 +95,14 @@ func copyToolSnapshot(base, source, destination string) error {
 		rel, err := filepath.Rel(source, path)
 		if err != nil {
 			return err
+		}
+		for _, skip := range exclude {
+			if skip(filepath.ToSlash(rel)) {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 		}
 		if entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
 			return fmt.Errorf("approved test snapshot contains a link")
@@ -227,9 +238,19 @@ require $workspace . '/vendor/codeception/codeception/app.php';
 		// resource-request flow rather than blocking unrelated coding work.
 		return nil
 	}
+	if profile.Fixtures != "" && profile.Repository == c.Repository && profile.LocalRepository == c.LocalRepository {
+		source := filepath.Join(control, filepath.FromSlash(profile.Fixtures))
+		if err = plainToolPath(control, source); err != nil {
+			return err
+		}
+		if err = copyMissingTestFixtures(workspace, source); err != nil {
+			return err
+		}
+	}
 	vendorReady := filepath.Join(tools, "vendor.ready")
 	previous, _ = os.ReadFile(vendorReady)
-	if string(previous) != stamp {
+	_, autoloadErr := os.Stat(filepath.Join(workspace, "vendor", "autoload.php"))
+	if string(previous) != stamp || os.IsNotExist(autoloadErr) {
 		if err = copyToolSnapshot(base, vendorSource, filepath.Join(workspace, "vendor")); err != nil {
 			return err
 		}
@@ -239,4 +260,46 @@ require $workspace . '/vendor/codeception/codeception/app.php';
 	}
 
 	return nil
+}
+
+// Operator-approved test resources only; never replace existing project files.
+func copyMissingTestFixtures(workspace, source string) error {
+	root, err := os.OpenRoot(workspace)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return fmt.Errorf("test fixtures must not contain links")
+		}
+		if entry.IsDir() {
+			return root.MkdirAll(rel, 0700)
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("unsupported test fixture type")
+		}
+		out, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if os.IsExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		_, err = io.Copy(out, in)
+		return err
+	})
 }

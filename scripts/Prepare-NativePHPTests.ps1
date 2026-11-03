@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory=$true)][string]$Task,
   [string]$Config='config.native.json',
   [string]$PHPSource='C:\xampp\php',
-  [string]$ComposerPhar='C:\ProgramData\ComposerSetup\bin\composer.phar'
+  [string]$ComposerPhar='C:\ProgramData\ComposerSetup\bin\composer.phar',
+  [string]$TestFixturesDirectory=''
 )
 $ErrorActionPreference='Stop'
 $repoRoot=Split-Path -Parent $PSScriptRoot
@@ -57,5 +58,17 @@ if($LASTEXITCODE -ne 0){throw 'Locked dependency installation failed; no project
 $vendor=Join-Path $snapshot 'vendor'
 if(!(Test-Path -LiteralPath $vendor)){Copy-Item -LiteralPath (Join-Path $workspace 'vendor') -Destination $vendor -Recurse}
 $profile=@{version=1;php=($relative+'/php');vendor=($relative+'/vendor');composer_manifest_sha256=$manifestHash;composer_lock_sha256=$lockHash}
+if($TestFixturesDirectory){
+  Assert-PlainPath $TestFixturesDirectory
+  $pending=New-Object 'Collections.Generic.Stack[string]'
+  $pending.Push([IO.Path]::GetFullPath($TestFixturesDirectory))
+  while($pending.Count){$directory=$pending.Pop();foreach($entry in [IO.Directory]::EnumerateFileSystemEntries($directory)){$attributes=[IO.File]::GetAttributes($entry);if($attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Test fixtures must not contain links'};if($attributes -band [IO.FileAttributes]::Directory){$pending.Push($entry)}}}
+  $fixtureSnapshot=Join-Path $snapshot 'fixtures'
+  New-Item -ItemType Directory -Path $fixtureSnapshot -Force|Out-Null
+  Get-ChildItem -LiteralPath $TestFixturesDirectory -Force|Copy-Item -Destination $fixtureSnapshot -Recurse -Force
+  $profile.fixtures=$relative+'/fixtures'
+  $profile.repository=[string]$cfg.repository
+  $profile.local_repository=[string]$cfg.local_repository
+}
 [IO.File]::WriteAllText((Join-Path $control 'native-php-tests.json'),($profile|ConvertTo-Json),$utf8)
 Write-Output 'Approved PHP runtime and locked dependencies prepared. Project code/tests were not executed on the host.'

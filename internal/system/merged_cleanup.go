@@ -65,7 +65,7 @@ func (r *Runner) removeMergedCopies(ctx context.Context, j *Job) error {
 				return err
 			}
 		}
-		targets := []string{p.Workspace, p.Publish, filepath.Join(base, "review-input"), filepath.Join(base, "private", "tools")}
+		targets := []string{p.Workspace, p.Publish, filepath.Join(base, "review-input"), filepath.Join(base, "reviewer-tests"), filepath.Join(base, "private", "tools")}
 		for _, role := range []string{"executor", "reviewer", "manager"} {
 			home := filepath.Join(base, "private", role+"-runtime")
 			targets = append(targets, filepath.Join(home, "codex", ".sandbox-bin"), filepath.Join(home, "codex", "tmp"), filepath.Join(home, "scratch"))
@@ -104,6 +104,11 @@ func (r *Runner) removeMergedCopies(ctx context.Context, j *Job) error {
 	existing := map[string]bool{}
 	for _, name := range strings.Fields(string(b)) {
 		existing[name] = true
+	}
+	if existing[r.volume(j.ID, "reviewer-home")] {
+		if err = r.cleanupDockerReviewTests(ctx, j.ID); err != nil {
+			return err
+		}
 	}
 	for _, kind := range []string{"workspace", "publish", "review"} {
 		name := r.volume(j.ID, kind)

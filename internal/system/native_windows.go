@@ -106,8 +106,21 @@ func (r *Runner) nativeRun(parent context.Context, j Job, role, prompt string) R
 			return result
 		}
 	}
+	if role == "reviewer" {
+		tests, err := prepareNativeReviewTests(r.C, j.ID, p.Workspace)
+		if err != nil {
+			result.Err = err
+			return result
+		}
+		defer os.RemoveAll(tests)
+		prompt += "\nA fresh disposable test copy is available at " + tests + ". Run builds, tests and fixture generation ONLY there; the original reviewed workspace remains read-only. The copy excludes Git metadata, review context and old test output. You may let test tools generate files in the copy, but must not change implementation or weaken tests to obtain a passing result. Report findings against original source paths, and report actual test results and limitations. The copy is removed after this review.\n"
+	}
 	if _, err := os.Stat(filepath.Join(nativeTaskTools(home), "php", "php.exe")); err == nil {
-		prompt += "\nA task-local PHP runtime is available at " + filepath.Join(nativeTaskTools(home), "php", "php.exe") + ". It is on PATH with a clean php.ini and task-only temporary storage. A matching operator-approved Composer snapshot is copied to workspace/vendor; check vendor/autoload.php before testing. No network installation is permitted. For Codeception on Windows, invoke php " + filepath.Join(nativeTaskTools(home), "codecept.php") + " <absolute-workspace> build -c <absolute-codeception.yml>, then the same launcher with run unit -o 'coverage: {enabled: false}' --no-colors -c <absolute-codeception.yml>. This launcher sets the working directory correctly. Build actors only as executor; reviewers use existing actors and preserve source read-only access. Docker is not required for unit tests. Use only isolated test data and never production services.\n"
+		testRoot := p.Workspace
+		if role == "reviewer" {
+			testRoot = nativeReviewTests(home)
+		}
+		prompt += "\nA task-local PHP runtime is available at " + filepath.Join(nativeTaskTools(home), "php", "php.exe") + ". It is on PATH with a clean php.ini and task-only temporary storage. A matching operator-approved Composer snapshot is copied to workspace/vendor; check vendor/autoload.php before testing. No network installation is permitted. For Codeception on Windows, invoke php " + filepath.Join(nativeTaskTools(home), "codecept.php") + " " + testRoot + " build -c " + filepath.Join(testRoot, "codeception.yml") + ", then the same launcher with run unit -o 'coverage: {enabled: false}' --no-colors -c the same configuration. This launcher sets the working directory correctly. Reviewers build actors only in their disposable test copy. Docker is not required for unit tests. Use only isolated test data and never production services.\n"
 	}
 	if e = os.MkdirAll(filepath.Join(home, "scratch"), 0700); e != nil {
 		result.Err = e
