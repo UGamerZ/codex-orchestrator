@@ -36,6 +36,33 @@ func TestSQLCommentDoesNotBlockPublication(t *testing.T) {
 	}
 }
 
+func TestSQLInspectionDoesNotBlockPublication(t *testing.T) {
+	comparison := `if (strpos($query, 'DELETE FROM s_products_tags') === 0 && count($args) > 0) {`
+	for _, tc := range []struct {
+		name, file, code string
+		blocked          bool
+	}{
+		{"regression assertion", "tests/unit/RecalcTagsTest.php", comparison, false},
+		{"production inspection", "app.php", comparison, false},
+		{"actual execution in tests", "tests/unit/RecalcTagsTest.php", `$db->query('DELETE FROM settings');`, true},
+		{"execution after inspection", "app.php", comparison + `$db->query('DROP TABLE settings');`, true},
+		{"executable argument", "app.php", `if (strpos($query, $db->query('DELETE FROM settings')) === 0) {`, true},
+		{"not PHP", "migration.sql", comparison, true},
+		{"SQL string containing comparison", "app.php", `$db->query("if (strpos($query, 'DELETE FROM settings') === 0)");`, true},
+		{"interpolated needle", "app.php", `if (strpos($query, "DELETE FROM $table") === 0) {`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateDataPreservationDiff([]byte("+++ b/" + tc.file + "\n+" + tc.code))
+			if (err != nil) != tc.blocked {
+				t.Fatalf("blocked=%v: %v", tc.blocked, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), tc.file) {
+				t.Fatalf("missing affected file: %v", err)
+			}
+		})
+	}
+}
+
 func TestPublicationGuardIgnoresOnlyLineEndingChanges(t *testing.T) {
 	for _, destructive := range []bool{false, true} {
 		t.Run(map[bool]string{false: "existing-sql", true: "new-destructive-sql"}[destructive], func(t *testing.T) {
