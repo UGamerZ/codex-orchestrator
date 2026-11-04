@@ -1,12 +1,55 @@
 package system
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestMarkdownPageReferences(t *testing.T) {
+	j := &Job{Description: "[https://a.intimcity.fit/](https://a.intimcity.fit/ \"‌\")"}
+	calls := 0
+	// Preserve the original encoding for parser fixtures, rather than silently
+	// interpreting a Windows-1251 page as UTF-8.
+	html := []byte{'<', 'h', 't', 'm', 'l', '>', 0xcf, 0xf0}
+	client := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.URL.String() != "https://a.intimcity.fit/" {
+			t.Fatalf("Markdown markup leaked into URL: %s", r.URL)
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Fatal("credentials sent to public site")
+		}
+		resp := response(string(html))
+		resp.Header = http.Header{"Content-Type": {"text/html; charset=windows-1251"}}
+		resp.Request = r
+		return resp, nil
+	})}
+	assets := downloadTaskAssets(context.Background(), taskReferenceURLs(j), client)
+	if calls != 1 || len(assets) != 1 {
+		t.Fatalf("expected one canonical request: calls=%d assets=%+v", calls, assets)
+	}
+	a := assets[0]
+	if a.Error != "" || !bytes.Equal(a.Data, html) || !strings.HasSuffix(a.Name, ".html") || a.ContentType != "text/html; charset=windows-1251" || a.FinalURL != "https://a.intimcity.fit/" {
+		t.Fatalf("HTML snapshot lost bytes or metadata: %+v", a)
+	}
+	if _, err := time.Parse(time.RFC3339, a.FetchedAt); err != nil {
+		t.Fatalf("missing fetch timestamp: %v", err)
+	}
+}
+
+func TestReferencesRetainEarlierAnswers(t *testing.T) {
+	j := &Job{Title: "Inspect https://example.org/title", Description: "![image](https://example.org/image.png)", Answer: "Continue", Clarifications: []Clarification{{Answer: "Use https://example.org/earlier%28v2%29"}}}
+	urls := taskReferenceURLs(j)
+	want := []string{"https://example.org/title", "https://example.org/image.png", "https://example.org/earlier%28v2%29"}
+	if strings.Join(urls, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("references: %v", urls)
+	}
+}
 
 func TestTaskAssetsNormalizeAndAuthenticate(t *testing.T) {
 	t.Setenv("TRELLO_KEY", "test-key")

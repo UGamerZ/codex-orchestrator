@@ -9,10 +9,13 @@ import (
 )
 
 type Asset struct {
-	Name   string `json:"name"`
-	Source string `json:"source"`
-	Data   []byte `json:"data,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Name        string `json:"name"`
+	Source      string `json:"source"`
+	ContentType string `json:"content_type,omitempty"`
+	FinalURL    string `json:"final_url,omitempty"`
+	FetchedAt   string `json:"fetched_at,omitempty"`
+	Data        []byte `json:"data,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 func prepareContext(r Request, p Paths, git func(string, ...string) ([]byte, error), repo string) error {

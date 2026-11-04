@@ -17,7 +17,10 @@ import (
 	"codex-orchestrator/internal/broker"
 )
 
-var taskURL = regexp.MustCompile(`https://[^\s<>"\)]+`)
+// Trello descriptions use Markdown: [https://host/](https://host/ "title").
+// Brackets and parentheses are delimiters, not part of either URL. Literal
+// delimiters in URLs must be percent-encoded.
+var taskURL = regexp.MustCompile(`https://[^\s<>"\[\]\(\)]+`)
 var trelloDownload = regexp.MustCompile(`^/1/cards/([a-f0-9]{24})/attachments/([a-f0-9]{24})/(?:previews/[a-f0-9]{24}/)?download/(.+)$`)
 
 func canonicalAssetURL(raw string) (string, error) {
@@ -103,7 +106,7 @@ func authorizeAsset(req *http.Request) {
 }
 
 func (a *API) TaskAssets(ctx context.Context, j *Job) ([]broker.Asset, error) {
-	urls := taskURL.FindAllString(taskDescription(j)+"\n"+j.Answer, -1)
+	urls := taskReferenceURLs(j)
 	if j.Card != "" {
 		var attachments []struct {
 			URL string `json:"url"`
@@ -116,6 +119,14 @@ func (a *API) TaskAssets(ctx context.Context, j *Job) ([]broker.Asset, error) {
 		}
 	}
 	return downloadTaskAssets(ctx, urls, assetHTTPClient()), nil
+}
+
+func taskReferenceURLs(j *Job) []string {
+	text := j.Title + "\n" + taskDescription(j) + "\n" + j.Answer
+	for _, clarification := range j.Clarifications {
+		text += "\n" + clarification.Answer
+	}
+	return taskURL.FindAllString(text, -1)
 }
 
 func downloadTaskAssets(ctx context.Context, urls []string, client *http.Client) []broker.Asset {
@@ -137,7 +148,11 @@ func downloadTaskAssets(ctx context.Context, urls []string, client *http.Client)
 			break
 		}
 		u, _ := url.Parse(source)
-		name := regexp.MustCompile(`[^A-Za-z0-9_.-]`).ReplaceAllString(path.Base(u.Path), "_")
+		name := path.Base(u.Path)
+		if name == "" || name == "." || name == "/" {
+			name = "reference.bin"
+		}
+		name = regexp.MustCompile(`[^A-Za-z0-9_.-]`).ReplaceAllString(name, "_")
 		if len(name) > 100 {
 			name = name[len(name)-100:]
 		}
@@ -146,11 +161,20 @@ func downloadTaskAssets(ctx context.Context, urls []string, client *http.Client)
 		}
 		asset := broker.Asset{Name: fmt.Sprintf("%02d-%s", len(out)+1, name), Source: source}
 		req, _ := http.NewRequestWithContext(ctx, "GET", source, nil)
+		req.Header.Set("User-Agent", "CodexOrchestrator/1.0 (task reference fetch)")
 		authorizeAsset(req)
 		resp, e := client.Do(req)
 		if e != nil {
 			asset.Error = "Linked file download failed (check access or connectivity)"
 		} else {
+			asset.ContentType = resp.Header.Get("Content-Type")
+			if strings.Contains(strings.ToLower(asset.ContentType), "text/html") && !strings.HasSuffix(strings.ToLower(asset.Name), ".html") {
+				asset.Name += ".html"
+			}
+			if resp.Request != nil {
+				asset.FinalURL = resp.Request.URL.String()
+			}
+			asset.FetchedAt = time.Now().UTC().Format(time.RFC3339)
 			if resp.StatusCode/100 != 2 {
 				asset.Error = fmt.Sprintf("Linked file HTTP %d", resp.StatusCode)
 			} else {

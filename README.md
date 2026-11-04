@@ -258,7 +258,7 @@ Containers share the Linux kernel; they do not provide the same boundary as a se
 <details>
 <summary><strong>Task attachments and branch references</strong></summary>
 
-The controller downloads Trello attachments and supported public HTTPS links from card descriptions and answers. Agents receive local files and a manifest; download credentials stay on the host. Private-network destinations and credential forwarding are rejected. Other private services require separately supplied files.
+The controller downloads Trello attachments and supported public HTTPS links from card descriptions and answers. Agents receive local files and a manifest; download credentials stay on the host. Public HTML pages linked in plain text or Markdown are downloaded before each agent run, independently of the built-in web search tool. The manifest records the content type and charset, final URL, and fetch time; HTML files preserve the original response bytes for parser inspection and offline checks. Private-network destinations and credential forwarding are rejected. Other private services require separately supplied files.
 
 Limits are **32 files**, **16 MiB per file**, and **64 MiB per task**. Failed downloads are listed so the agent can ask for the specific missing resource.
 
