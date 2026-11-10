@@ -9,6 +9,7 @@ import (
 )
 
 type Job struct {
+	RateLimited              bool              `json:"rate_limited,omitempty"`
 	MergedCopiesCleanedAt    time.Time         `json:"merged_copies_cleaned_at,omitempty"`
 	CompletedCopiesCleanedAt time.Time         `json:"completed_copies_cleaned_at,omitempty"`
 	QuestionReminderRoot     int64             `json:"question_reminder_root,omitempty"`

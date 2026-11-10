@@ -23,6 +23,7 @@ func (c *Controller) completeBoardTask(j *Job) {
 	j.QuestionMessage = 0
 	j.LastError = ""
 	j.RetryAt = time.Time{}
+	j.RateLimited = false
 	j.FeedbackPending = false
 	if j.Stage != "running" && j.Stage != "publishing" {
 		j.Stage = "completed"

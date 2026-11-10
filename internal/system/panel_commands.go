@@ -151,6 +151,7 @@ func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 		j.Question = ""
 		j.QuestionMessage = 0
 		j.RetryAt = time.Time{}
+		j.RateLimited = false
 		j.StallRetries = 0
 		j.NetworkRetries = 0
 		j.ModelBusyRetries = 0

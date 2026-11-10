@@ -175,7 +175,7 @@ See the [dashboard and watchdog guide](docs/DASHBOARD.md) for operation and star
 | --- | --- |
 | Add work | Put a card in the configured **To Do** list. |
 | Add task requirements | Use the card description or Trello checklists. Checklist names, items, and checked states reach the manager, executor, and reviewer; an empty description is supported. |
-| Check the board now | Send `/check` in Telegram or use the dashboard. |
+| Check the board now | Send `/check` in Telegram or use the dashboard. After a Codex usage-limit reset, this also retries agents deferred by that limit; existing tasks and sessions are retained. |
 | Check task states | Send `/status` or open **Tasks**. |
 | Answer an agent | Use **Reply** on its Telegram question or any **Task still blocked** reminder for that question, or answer in the dashboard. |
 | Request changes after review | Reply to **Review complete** in Telegram, or comment on the open PR using the environment's configured GitHub account. |

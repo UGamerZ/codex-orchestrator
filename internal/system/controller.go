@@ -205,7 +205,10 @@ func (c *Controller) poll(ctx context.Context) error {
 	}
 	due := time.Since(c.State.LastManager) >= time.Duration(c.C.ManagerInterval)*time.Second
 	manager := c.State.Jobs["manager"]
-	if (due || c.State.BoardCheckRequested || c.State.BoardCheckAfterDone) && (manager == nil || manager.Stage == "done") {
+	// A quota-deferred manager is queued, not done. Manual checks may refresh
+	// its pending snapshot, but must never overwrite a running manager's input.
+	manual := c.State.BoardCheckRequested
+	if (due || manual || c.State.BoardCheckAfterDone) && (manager == nil || manager.Stage == "done" || (manual && manager.Stage == "queued")) {
 		cards, e := c.API.Cards(ctx)
 		if e != nil {
 			return e
@@ -214,9 +217,6 @@ func (c *Controller) poll(ctx context.Context) error {
 		if due {
 			c.State.LastManager = time.Now().UTC()
 		}
-		manual := c.State.BoardCheckRequested
-		c.State.BoardCheckRequested = false
-		c.State.BoardCheckAfterDone = false
 		pending := []*Job{}
 		for _, card := range cards {
 			if !card.Closed && card.List == c.C.Todo {
@@ -235,14 +235,25 @@ func (c *Controller) poll(ctx context.Context) error {
 				}
 			}
 		}
+		resumed := 0
+		if manual {
+			resumed = c.retryQuotaOnBoardCheck()
+		}
+		c.State.BoardCheckRequested = false
+		c.State.BoardCheckAfterDone = false
 		c.State.Pending = pending
 		if len(pending) > 0 {
 			if j := c.State.Jobs["manager"]; j == nil || j.Stage == "done" {
 				c.State.Jobs["manager"] = &Job{ID: "manager", Title: "Prioritize Trello tasks", Role: "manager", Stage: "queued"}
 			}
+		} else if manager != nil && manager.Stage == "queued" {
+			// Cards may have been archived/removed while the manager was delayed.
+			manager.Stage = "done"
+			manager.RetryAt = time.Time{}
+			manager.RateLimited = false
 		}
 		if manual {
-			if _, e := c.API.Send(ctx, fmt.Sprintf("Board check complete: %d new To Do task(s). Tasks are queued for the manager; executor limits still apply.", len(pending))); e != nil {
+			if _, e := c.API.Send(ctx, fmt.Sprintf("Board check complete: %d new To Do task(s); %d rate-limited agent(s) ready to retry. Executor limits still apply.", len(pending), resumed)); e != nil {
 				log.Printf("board check notification: %v", e)
 			}
 		}
@@ -596,6 +607,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		return nil
 	}
 	if r.Err != nil {
+		j.RateLimited = false
 		if retryableNetworkResult(r) && c.retryNetworkFailure(ctx, j, r.Role, r.Err.Error()) {
 			return nil
 		}
@@ -629,11 +641,13 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 			return nil
 		}
 		if r.RateLimited {
+			j.RateLimited = true
 			j.RetryAt = time.Now().Add(time.Hour)
 			j.Stage = "queued"
 			if r.Role == "reviewer" {
 				j.Stage = "review"
 			}
+			c.panelEvent("quota-retry", j.ID, "Codex usage limit reached; task and session retained. Automatic retry in one hour, or use Check board after limits reset.")
 			return nil
 		}
 		if r.ModelUnavailable && r.Role == "executor" && !j.Fallback {
@@ -650,6 +664,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		return nil
 	}
 	j.LastError = ""
+	j.RateLimited = false
 	j.NetworkRetries = 0
 	j.StallRetries = 0
 	j.ModelBusyRetries = 0
