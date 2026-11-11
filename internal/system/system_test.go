@@ -146,7 +146,7 @@ func TestManagerCannotInventCard(t *testing.T) {
 	if e := c.finish(context.Background(), RunResult{ID: j.ID, Role: "manager", Verdict: Verdict{Status: "completed", Selected: []string{"invented"}}}); e != nil {
 		t.Fatal(e)
 	}
-	if len(c.State.Jobs) != 1 || j.Stage != "waiting" {
+	if len(c.State.Jobs) != 1 || j.Stage != "queued" || j.InvalidResultRetries != 1 {
 		t.Fatal("untrusted card scheduled")
 	}
 }
