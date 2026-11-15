@@ -234,8 +234,12 @@ func prepareNativeAuth(source, home string) error {
 	if e = json.Unmarshal(b, &auth); e != nil {
 		return e
 	}
-	var tokens map[string]string
-	if json.Unmarshal(auth["tokens"], &tokens) != nil || tokens["access_token"] == "" {
+	// CLI token metadata can contain structured objects (oauth_provenance).
+	// Validate the required token without assuming every metadata value is text.
+	var tokens struct {
+		AccessToken string `json:"access_token"`
+	}
+	if json.Unmarshal(auth["tokens"], &tokens) != nil || tokens.AccessToken == "" {
 		return fmt.Errorf("ChatGPT login required")
 	}
 	clean := map[string]json.RawMessage{}

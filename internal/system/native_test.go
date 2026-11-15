@@ -59,3 +59,20 @@ func TestNativeAuthRejectsAPIKey(t *testing.T) {
 		t.Fatal("API key accepted")
 	}
 }
+
+func TestNativeAuthPreservesStructuredTokenMetadata(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.json")
+	data := `{"auth_mode":"chatgpt","tokens":{"access_token":"test-access","account_id":"test-account","oauth_provenance":{"source":"login"}},"last_refresh":"2026-11-15T00:00:00Z","OPENAI_API_KEY":"must-not-copy"}`
+	if err := os.WriteFile(source, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(root, "runtime")
+	if err := prepareNativeAuth(source, home); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(home, "auth.json"))
+	if err != nil || !strings.Contains(string(b), `"oauth_provenance"`) || strings.Contains(string(b), "must-not-copy") {
+		t.Fatal("structured ChatGPT credentials lost or unrelated API key copied")
+	}
+}
