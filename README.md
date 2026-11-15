@@ -277,7 +277,7 @@ The SQL guard blocks newly added `DELETE FROM`, `TRUNCATE`, `DROP TABLE/DATABASE
 
 Existing tracked relative symlinks are preserved only when their complete target chain stays inside the working copy and avoids Git metadata. New or modified links and submodules require separate human preparation.
 
-Open external PRs targeting the configured base branch may receive review comments, but automatic fixes apply only to system-created task branches. Enabling `auto_continue_task_branches` permits those task branches to continue after verified manual updates. The exact-head guard still stops publication if the branch changes during preparation or push.
+GitHub polling only reconciles PRs belonging to tasks already registered in the selected environment. Unrelated PRs are ignored, even if their branch starts with `codex/` or their description links to Trello. Imported external-PR records from older versions are removed from the active task list and archived locally under `ignored-external-prs/`. Automatic fixes apply only to system-created task branches. Enabling `auto_continue_task_branches` permits those task branches to continue after verified manual updates. The exact-head guard still stops publication if the branch changes during preparation or push.
 
 </details>
 

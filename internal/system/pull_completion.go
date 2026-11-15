@@ -63,7 +63,7 @@ func (c *Controller) inactivePullOwner(p Pull) (bool, string, error) {
 // Resolve completion before creating/reopening an external review. Never use
 // title matching, which can bind an unrelated task to a completed card.
 func (c *Controller) reconcileDiscoveredPull(ctx context.Context, p Pull, j *Job) (*Job, bool, error) {
-	if j != nil && j.BoardCompleted {
+	if j == nil || j.BoardCompleted {
 		return j, true, nil
 	}
 	foreign := false
@@ -97,11 +97,6 @@ func (c *Controller) reconcileDiscoveredPull(ctx context.Context, p Pull, j *Job
 		}
 	}
 	completed := card.ID != "" && cardOutsideLists(c.C, card)
-	if j == nil && (completed || !foreign) {
-		id := fmt.Sprintf("pr-%d", p.Number)
-		j = &Job{ID: id, Title: p.Title, Description: p.Body, Branch: "codex/" + id, Head: p.Head.SHA, PR: p.Number, PRURL: p.URL, External: true, Role: "reviewer", Stage: "review"}
-		c.State.Jobs[id] = j
-	}
 	if j != nil && card.ID != "" {
 		j.Card = card.ID
 	}

@@ -46,6 +46,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	if e := c.Runner.StopAbandoned(ctx); e != nil {
 		return e
 	}
+	if e := c.retireImportedPulls(); e != nil {
+		return e
+	}
 	c.recoverDataGuardPublications()
 	c.recoverExternalReviewBlockers()
 	c.recoverInterruptedAgents()
@@ -104,6 +107,10 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 }
 func (c *Controller) poll(ctx context.Context) error {
+	// Also apply the migration after switching to a previously inactive setup.
+	if err := c.retireImportedPulls(); err != nil {
+		return err
+	}
 	// Telegram handling and PR discovery continue while agents run.
 	if e := c.answers(ctx); e != nil {
 		c.ChannelReady = false
@@ -379,6 +386,9 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 	for _, p := range pulls {
 		var j *Job
 		for _, candidate := range c.State.Jobs {
+			if importedPull(candidate) {
+				continue
+			}
 			if candidate.PR == p.Number {
 				j = candidate
 				break
@@ -393,7 +403,12 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 				break
 			}
 		}
-		if j != nil && !j.MergedCopiesCleanedAt.IsZero() {
+		// Discovery reconciles PRs for existing tasks only. A branch name,
+		// author, title or Trello link in a PR is never authority to create work.
+		if j == nil {
+			continue
+		}
+		if !j.MergedCopiesCleanedAt.IsZero() {
 			continue // A confirmed merge cannot be reopened by a stale PR listing.
 		}
 		var skip bool
@@ -404,11 +419,7 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 		if skip {
 			continue
 		}
-		if j == nil {
-			id := fmt.Sprintf("pr-%d", p.Number)
-			j = &Job{ID: id, Title: p.Title, Description: p.Body, Branch: "codex/" + id, Head: p.Head.SHA, PR: p.Number, PRURL: p.URL, External: true, Role: "reviewer", Stage: "review"}
-			c.State.Jobs[id] = j
-		} else if c.C.AutoContinueTasks && systemCreatedTask(j) && p.Head.Repo.FullName == c.C.Repository && p.Head.Ref == j.Branch && (j.External || j.Head != p.Head.SHA) && j.Stage != "running" && j.Stage != "publishing" && j.Stage != "publish" && j.Stage != "queued" {
+		if c.C.AutoContinueTasks && systemCreatedTask(j) && p.Head.Repo.FullName == c.C.Repository && p.Head.Ref == j.Branch && (j.External || j.Head != p.Head.SHA) && j.Stage != "running" && j.Stage != "publishing" && j.Stage != "publish" && j.Stage != "queued" {
 			head, e := c.API.BranchHead(ctx, p)
 			if e != nil {
 				return e

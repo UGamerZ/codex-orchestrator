@@ -45,22 +45,13 @@ func linkedPullFixture(t *testing.T) (*Controller, Pull) {
 	return c, p
 }
 func TestDiscoveredPullInMergedGetsCompletedBeforeReview(t *testing.T) {
-	c, p := linkedPullFixture(t)
+	c, _ := linkedPullFixture(t)
 	if err := c.discoverPRs(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	j := c.State.Jobs["pr-16"]
-	if j == nil || !j.BoardCompleted || j.Stage != "completed" || j.Card != completedPullCard {
-		t.Fatal("untracked completed pull queued for review")
-	}
-	p.Head.SHA = "later-change"
-	if _, skip, err := c.reconcileDiscoveredPull(context.Background(), p, j); !skip || err != nil {
-		t.Fatal("later update reopened completed pull", err)
-	}
-	c.save()
-	saved, err := LoadState(c.C.StateDir)
-	if err != nil || !saved.Jobs[j.ID].BoardCompleted {
-		t.Fatal("completion not retained")
+	if j != nil || len(c.State.Jobs) != 0 {
+		t.Fatal("untracked PR was imported as a task")
 	}
 }
 func TestLegacyUnlinkedWaitingPullStopsQuestionsAndRetries(t *testing.T) {
@@ -70,8 +61,8 @@ func TestLegacyUnlinkedWaitingPullStopsQuestionsAndRetries(t *testing.T) {
 	if err := c.poll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !j.BoardCompleted || j.Stage != "completed" || j.Question != "" || j.QuestionMessage != 0 {
-		t.Fatal("legacy duplicate still blocked")
+	if c.State.Jobs[j.ID] != nil {
+		t.Fatal("legacy duplicate still tracked")
 	}
 	if c.executePanelCommand(PanelCommand{Action: "retry", ID: j.ID}) == nil {
 		t.Fatal("completed pull retried")
@@ -92,7 +83,7 @@ func TestCardReferencesUseStableBranchAndSupportShortLinks(t *testing.T) {
 	c, p := linkedPullFixture(t)
 	p.Body = "https://trello.com/c/YBpFStrY/title"
 	p.Head.Ref = "feature/tests"
-	j, skip, err := c.reconcileDiscoveredPull(context.Background(), p, nil)
+	j, skip, err := c.reconcileDiscoveredPull(context.Background(), p, &Job{ID: "owned", SystemCreated: true})
 	if err != nil || !skip || j.Card != completedPullCard {
 		t.Fatal("short link not canonicalized", err)
 	}
@@ -102,8 +93,8 @@ func TestForkBranchCannotImplicitlyBindAnUnrelatedCard(t *testing.T) {
 	p.Body = "No Trello reference"
 	p.Head.Repo.FullName = "other/fork"
 	j, skip, err := c.reconcileDiscoveredPull(context.Background(), p, nil)
-	if err != nil || skip || j.Card != "" || j.Stage != "review" {
-		t.Fatal("fork branch bound to unrelated card", err)
+	if err != nil || !skip || j != nil {
+		t.Fatal("untracked fork PR accepted", err)
 	}
 }
 func TestInactiveEnvironmentOwnerSuppressesDuplicateReview(t *testing.T) {
@@ -142,6 +133,7 @@ func TestInactiveEnvironmentOwnerSuppressesDuplicateReview(t *testing.T) {
 }
 func TestLinkedCardReadFailureHoldsScheduling(t *testing.T) {
 	c, _ := linkedPullFixture(t)
+	c.State.Jobs[completedPullCard] = &Job{ID: completedPullCard, Card: completedPullCard, PR: 16, Branch: "codex/" + completedPullCard, SystemCreated: true, Stage: "review"}
 	c.API.Client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
 		if strings.HasSuffix(r.URL.Path, "/getUpdates") {
 			return response(`{"ok":true,"result":[]}`), nil
@@ -152,7 +144,7 @@ func TestLinkedCardReadFailureHoldsScheduling(t *testing.T) {
 		return nil, fmt.Errorf("offline")
 	})
 	c.poll(context.Background())
-	if c.ChannelReady || len(c.State.Jobs) > 0 {
+	if c.ChannelReady || len(c.State.Jobs) != 1 {
 		t.Fatal("unverified linked PR allowed work")
 	}
 }
