@@ -39,6 +39,7 @@ type Config struct {
 	FallbackEffort    string   `json:"fallback_effort"`
 	ManagerModel      string   `json:"manager_model"`
 	ReviewerModel     string   `json:"reviewer_model"`
+	ReviewerEffort    string   `json:"reviewer_effort,omitempty"`
 	OtherEffort       string   `json:"other_effort"`
 	Image             string   `json:"worker_image"`
 	Network           string   `json:"network"`
@@ -126,7 +127,7 @@ func LoadConfig(path string) (Config, error) {
 			return c, fmt.Errorf("invalid model name")
 		}
 	}
-	for _, effort := range []string{c.WorkerEffort, c.FallbackEffort, c.OtherEffort} {
+	for _, effort := range []string{c.WorkerEffort, c.FallbackEffort, c.OtherEffort, reviewerEffort(c)} {
 		if effort != "low" && effort != "medium" && effort != "high" && effort != "xhigh" {
 			return c, fmt.Errorf("invalid reasoning effort")
 		}

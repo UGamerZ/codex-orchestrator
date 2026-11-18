@@ -280,7 +280,7 @@ func nativeExecArgs(c Config, j Job, role, workspace, home, result, schema strin
 	}
 	model, effort := c.WorkerModel, c.WorkerEffort
 	if role == "reviewer" {
-		model, effort = c.ReviewerModel, c.OtherEffort
+		model, effort = c.ReviewerModel, reviewerEffort(c)
 	}
 	if role == "manager" {
 		model, effort = c.ManagerModel, c.OtherEffort

@@ -291,7 +291,7 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 	}
 	model, effort := r.C.WorkerModel, r.C.WorkerEffort
 	if role == "reviewer" {
-		model, effort = r.C.ReviewerModel, r.C.OtherEffort
+		model, effort = r.C.ReviewerModel, reviewerEffort(r.C)
 	}
 	if role == "manager" {
 		model, effort = r.C.ManagerModel, r.C.OtherEffort
