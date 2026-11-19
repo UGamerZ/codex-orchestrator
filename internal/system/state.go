@@ -54,6 +54,7 @@ type Job struct {
 	Summary                  string            `json:"summary"`
 	Findings                 []string          `json:"findings"`
 	Fixes                    int               `json:"fixes"`
+	FixLimitDisabled         bool              `json:"fix_limit_disabled,omitempty"`
 	RetryAt                  time.Time         `json:"retry_at"`
 	Fallback                 bool              `json:"fallback"`
 	NotifiedHead             string            `json:"notified_head"`

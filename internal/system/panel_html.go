@@ -43,8 +43,10 @@ function renderTasks(){const root=document.getElementById('taskList');if(!root)r
   if(j.question)card.append(el('div','notice',j.question));else if(j.last_error)card.append(el('div','notice',j.last_error));
   if(j.retry_at&&!j.retry_at.startsWith('0001'))card.append(el('p','muted','Next retry: '+date(j.retry_at)));
   const details=el('details');details.append(el('summary','','Review and result details'),el('div','detail',(j.summary||'No result yet')+'\n\n'+(j.findings||[]).join('\n\n')),el('p','mono','Commit: '+(j.head||'not published')));card.append(details);
+  card.append(el('p','muted','Automatic fixes: '+(j.fixes||0)+' · Fix limit: '+(j.fix_limit_disabled?'Disabled':'Enabled')));
   const actions=el('div','actions');if(j.pr_url&&j.pr_url.startsWith('https://github.com/')){const a=el('a','','Open PR');a.href=j.pr_url;a.target='_blank';a.rel='noopener noreferrer';actions.append(a)}
   if(['waiting','queued','review'].includes(j.stage)&&!j.closed_pr){actions.append(button('Retry',()=>command('retry',j.id)));if(j.stage==='waiting'){const answer=el('textarea');answer.id='answer-'+j.id;answer.value=drafts[j.id]||'';answer.oninput=()=>drafts[j.id]=answer.value;answer.placeholder='Answer the agent or confirm the missing resource is ready';card.append(answer);actions.append(button('Send answer',()=>command('answer',j.id,answer.value),'primary'))}}
+  if(j.id!=='manager'&&!j.external&&!j.closed_pr&&!j.board_completed&&!['closed','completed'].includes(j.stage)){actions.append(button(j.fix_limit_disabled?'Enable fix limit':'Disable fix limit',()=>command(j.fix_limit_disabled?'enable-fix-limit':'disable-fix-limit',j.id)))};
   card.append(actions);root.append(card)
  });if(!list.length)root.append(el('div','notice','No matching tasks'))}
 function renderEvents(root,events){root.append(el('h2','','Activity'));[...events].reverse().forEach(e=>{const n=el('div','event');n.append(el('small','',date(e.at)+' · '+e.kind+(e.task?' · '+e.task:'')),el('div','detail',e.message));root.append(n)});if(!events.length)root.append(el('p','muted','Events will appear as work progresses.'))}

@@ -104,6 +104,23 @@ func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 			return err
 		}
 		c.State.PendingConfig = cmd.Patch
+	case "disable-fix-limit", "enable-fix-limit":
+		j := c.State.Jobs[cmd.ID]
+		if j == nil || j.ID == "manager" || j.External || j.ClosedPR || j.BoardCompleted || j.Stage == "closed" || j.Stage == "completed" {
+			return fmt.Errorf("an open system-owned task is required")
+		}
+		j.FixLimitDisabled = cmd.Action == "disable-fix-limit"
+		if !j.FixLimitDisabled {
+			// Re-enabling starts a fresh bounded correction cycle.
+			j.Fixes = 0
+		} else if j.Stage == "waiting" && j.Role == "executor" && j.QuestionOrigin == "system" && strings.HasPrefix(j.Question, "The automatic fix limit has been reached.") {
+			j.Stage = "queued"
+			j.Question = ""
+			j.QuestionMessage = 0
+			j.QuestionOrigin = ""
+			j.RetryAt = time.Time{}
+			j.LastError = ""
+		}
 	case "feedback":
 		j := c.State.Jobs[cmd.ID]
 		if j == nil || strings.TrimSpace(cmd.Text) == "" {

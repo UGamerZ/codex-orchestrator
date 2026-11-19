@@ -787,7 +787,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 			return nil
 		}
 		j.Fixes++
-		if j.Fixes > c.C.MaxFixes {
+		if !j.FixLimitDisabled && j.Fixes > c.C.MaxFixes {
 			j.Role = "executor"
 			c.wait(j, "The automatic fix limit has been reached. Findings: "+strings.Join(v.Findings, "\n")+". Clarify the next step; your reply resets the fix counter and authorizes a new full cycle of automatic fixes.")
 			return nil

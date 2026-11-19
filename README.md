@@ -211,6 +211,8 @@ Defaults shipped in the example configurations:
 
 Replying to an exhausted fix-limit question or explicitly retrying it resets the correction counter and grants a new full cycle using this configured limit. This applies to Telegram questions/reminders and dashboard answers, including inactive environments; automatic retries do not reset the budget.
 
+In the dashboard Tasks view, **Disable fix limit** removes the correction-round limit for that task only and resumes it if it was waiting at that limit. The choice survives restarts. **Enable fix limit** starts a fresh cycle with the configured limit. Other tasks, review requirements, and resource/permission blockers remain unchanged.
+
 Models and reasoning levels are configurable; choose models available to your Codex account. The fallback is used when the primary model is explicitly unavailable. It does not bypass subscription limits: a rate limit delays the next attempt by an hour.
 
 Interrupted or timed-out agent runs can retry up to three times, five minutes apart. Human questions, exhausted fix limits, publication uncertainty, and permission blocks remain blockers. A quiet agent is not considered stuck solely because it has not sent a recent message.
