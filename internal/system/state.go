@@ -9,6 +9,7 @@ import (
 )
 
 type Job struct {
+	AddedAt                  time.Time         `json:"added_at,omitempty"`
 	RateLimited              bool              `json:"rate_limited,omitempty"`
 	MergedCopiesCleanedAt    time.Time         `json:"merged_copies_cleaned_at,omitempty"`
 	CompletedCopiesCleanedAt time.Time         `json:"completed_copies_cleaned_at,omitempty"`

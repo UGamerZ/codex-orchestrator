@@ -733,6 +733,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 			}
 			if _, exists := c.State.Jobs[id]; !exists {
 				allowed[id].SystemCreated = true
+				allowed[id].AddedAt = time.Now().UTC()
 				c.State.Jobs[id] = allowed[id]
 			}
 		}
