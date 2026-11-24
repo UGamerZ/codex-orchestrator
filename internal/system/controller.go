@@ -91,7 +91,7 @@ func (c *Controller) Run(ctx context.Context) error {
 			if err := c.checkResultCard(ctx, c.State.Jobs[r.ID]); err != nil {
 				r.Err = err
 			}
-			if r.Err != nil && r.Err != errCardCompleted && c.State.Jobs[r.ID] != nil && !c.State.Jobs[r.ID].BoardCompleted && !retryableNetworkResult(r) {
+			if r.Err != nil && r.Err != errCardCompleted && c.State.Jobs[r.ID] != nil && !c.State.Jobs[r.ID].BoardCompleted && !retryableNetworkResult(r) && !dataGuardRejection(r) {
 				c.reportPanelIssue(ctx, "Task ["+r.ID+"] "+r.Role, r.Err)
 			}
 			if e := c.finish(ctx, r); e != nil {
@@ -618,6 +618,10 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 	}
 	if r.Err != nil {
 		j.RateLimited = false
+		if dataGuardRejection(r) && !j.External {
+			c.retryDataGuardCorrection(j, r.Err.Error())
+			return nil
+		}
 		if retryableNetworkResult(r) && c.retryNetworkFailure(ctx, j, r.Role, r.Err.Error()) {
 			return nil
 		}
@@ -682,6 +686,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		j.InvalidResultRetries = 0
 	}
 	if r.Role == "publisher" {
+		j.DataGuardRetries = 0
 		if !r.Publication.Changed && j.PR == 0 && (r.Publication.SHA == j.BaseSHA || r.Publication.SHA == "") {
 			c.wait(j, "The executor finished, but there are no changes for a new review. Clarify the expected result.")
 			return nil

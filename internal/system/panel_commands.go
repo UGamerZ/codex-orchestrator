@@ -50,12 +50,8 @@ func (c *Controller) reportPanelIssue(ctx context.Context, label string, err err
 }
 func (c *Controller) recoverDataGuardPublications() {
 	for _, j := range c.State.Jobs {
-		if j.Stage == "waiting" && j.Role == "publisher" && !j.External && !j.ClosedPR && j.DataGuardVersion < 1 && strings.HasPrefix(j.LastError, "data-preservation guard:") {
-			j.DataGuardVersion = 1
-			j.Stage = "publish"
-			j.Question = ""
-			j.QuestionMessage = 0
-			c.panelEvent("retry", j.ID, "Retrying publication after SQL comment false-positive fix")
+		if j.Stage == "waiting" && j.Role == "publisher" && !j.External && !j.ClosedPR && !j.BoardCompleted && strings.HasPrefix(j.LastError, "data-preservation guard:") {
+			c.retryDataGuardCorrection(j, j.LastError)
 		}
 	}
 }
