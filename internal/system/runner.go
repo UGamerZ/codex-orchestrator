@@ -275,6 +275,7 @@ func (r *Runner) RunContext(parent context.Context, j Job, role, prompt string) 
 			return result
 		}
 		prompt += documentationReviewInstructions(review.Files)
+		prompt += reviewChangedFiles(review.Files)
 	}
 	if role != "manager" {
 		if _, e := r.Broker(ctx, &j, "context"); e != nil {

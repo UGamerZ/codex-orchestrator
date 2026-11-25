@@ -92,6 +92,7 @@ func (r *Runner) nativeRun(parent context.Context, j Job, role, prompt string) R
 			return result
 		}
 		prompt += documentationReviewInstructions(review.Files)
+		prompt += reviewChangedFiles(review.Files)
 	}
 	if role != "manager" {
 		if _, e := r.nativeBroker(ctx, &j, "context"); e != nil {
