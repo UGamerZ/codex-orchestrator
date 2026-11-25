@@ -68,6 +68,8 @@ func (c *Controller) handlePanelCommand(cmd PanelCommand) {
 }
 func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	switch cmd.Action {
+	case "delete-task":
+		return c.deleteCompletedTask(cmd.ID)
 	case "environment-delete":
 		return c.deleteEnvironment(cmd.ID)
 	case "environment-update":

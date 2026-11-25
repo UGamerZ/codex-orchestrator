@@ -217,6 +217,8 @@ Models and reasoning levels are configurable; choose models available to your Co
 
 Interrupted or timed-out agent runs can retry up to three times, five minutes apart. Human questions, exhausted fix limits, publication uncertainty, and permission blocks remain blockers. A quiet agent is not considered stuck solely because it has not sent a recent message.
 
+Every task is an isolated scope of work. Agents implement only its explicit requirements and correct regressions introduced by its changes. Pre-existing bugs, unrelated test failures, refactoring, optimization and changes to existing business rules require a separate human-authorized task. Review findings cannot expand the task or authorize unrelated fixes.
+
 ## Isolation and permissions
 
 The trusted controller manages integrations and publication. Executors work on task branches; reviewers and managers receive read-only working copies.
