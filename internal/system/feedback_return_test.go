@@ -128,12 +128,33 @@ func TestReturnedFeedbackPreservesLatestOwnedTaskRevision(t *testing.T) {
 	c.C.AutoContinueTasks = true
 	j.SystemCreated = true
 	j.ExecutorSession = "old-session"
-	c.API.ghTransport = func(context.Context, ...string) ([]byte, error) {
+	c.API.ghTransport = func(_ context.Context, args ...string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), "/git/ref/heads/") {
+			return []byte(`{"object":{"sha":"updated"}}`), nil
+		}
 		return []byte(`{"number":7,"state":"open","head":{"sha":"updated","ref":"codex/task","repo":{"full_name":"owner/repo"}}}`), nil
 	}
 	_, _, err := c.completionFeedback(context.Background(), &TGMessage{Text: "Fix this", Reply: &TGMessage{ID: 42}})
 	if err != nil || j.Head != "updated" || j.External || j.BoardCompleted || j.Stage != "queued" || j.Answer != "Fix this" {
 		t.Fatal("latest branch revision or feedback lost", err)
+	}
+}
+
+func TestFeedbackDoesNotRewindToStalePullMetadata(t *testing.T) {
+	c, j := feedbackBoardFixture(t, "progress", false, "open")
+	c.C.AutoContinueTasks = true
+	j.SystemCreated = true
+	j.ExecutorSession = "keep-session"
+	j.BaseSHA = "keep-base"
+	c.API.ghTransport = func(_ context.Context, args ...string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), "/git/ref/heads/") {
+			return []byte(`{"object":{"sha":"abc"}}`), nil
+		}
+		return []byte(`{"number":7,"state":"open","head":{"sha":"stale","ref":"codex/task","repo":{"full_name":"owner/repo"}}}`), nil
+	}
+	_, _, err := c.completionFeedback(context.Background(), &TGMessage{Text: "Correct only this task", Reply: &TGMessage{ID: 42}})
+	if err != nil || j.Head != "abc" || j.BaseSHA != "keep-base" || j.ExecutorSession != "keep-session" || j.Stage != "queued" {
+		t.Fatal("stale PR metadata rewound the task", err)
 	}
 }
 

@@ -85,7 +85,13 @@ func (c *Controller) applyHumanFeedback(ctx context.Context, j *Job, text string
 		}
 		if pull.Head.SHA != "" && pull.Head.SHA != j.Head && j.Stage != "running" && j.Stage != "publishing" {
 			if c.C.AutoContinueTasks && systemCreatedTask(j) && pull.Head.Repo.FullName == c.C.Repository && pull.Head.Ref == j.Branch {
-				adoptTaskHead(j, pull.Head.SHA)
+				head, err := c.API.BranchHead(ctx, pull)
+				if err != nil {
+					return blocked("the current task branch could not be verified")
+				}
+				if head != j.Head {
+					adoptTaskHead(j, head)
+				}
 			} else {
 				// Receiving feedback is not permission to overwrite someone else's changes.
 				j.External = true
