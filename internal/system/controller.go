@@ -53,6 +53,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	c.recoverExternalReviewBlockers()
 	c.recoverInterruptedAgents()
 	c.recoverNetworkFailures(ctx)
+	c.recoverReviewRefWaits(ctx)
 	c.recoverDocumentationReviews(ctx)
 	c.recoverAuthorizedPublications()
 	c.recoverEmptyClarifications()
@@ -91,7 +92,7 @@ func (c *Controller) Run(ctx context.Context) error {
 			if err := c.checkResultCard(ctx, c.State.Jobs[r.ID]); err != nil {
 				r.Err = err
 			}
-			if r.Err != nil && r.Err != errCardCompleted && c.State.Jobs[r.ID] != nil && !c.State.Jobs[r.ID].BoardCompleted && !retryableNetworkResult(r) && !dataGuardRejection(r) {
+			if r.Err != nil && r.Err != errCardCompleted && c.State.Jobs[r.ID] != nil && !c.State.Jobs[r.ID].BoardCompleted && !retryableNetworkResult(r) && !dataGuardRejection(r) && !reviewRefMismatch(r) {
 				c.reportPanelIssue(ctx, "Task ["+r.ID+"] "+r.Role, r.Err)
 			}
 			if e := c.finish(ctx, r); e != nil {
@@ -618,6 +619,9 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 	}
 	if r.Err != nil {
 		j.RateLimited = false
+		if reviewRefMismatch(r) && c.retryReviewRefWait(ctx, j) {
+			return nil
+		}
 		if dataGuardRejection(r) && !j.External {
 			c.retryDataGuardCorrection(j, r.Err.Error())
 			return nil
@@ -678,6 +682,9 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		return nil
 	}
 	j.LastError = ""
+	if r.Role == "reviewer" {
+		j.ReviewRefWaiting = false
+	}
 	j.RateLimited = false
 	j.NetworkRetries = 0
 	j.StallRetries = 0

@@ -21,6 +21,7 @@ type Job struct {
 	BoardCompleted           bool              `json:"board_completed,omitempty"`
 	DataGuardVersion         int               `json:"data_guard_version,omitempty"`
 	DataGuardRetries         int               `json:"data_guard_retries,omitempty"`
+	ReviewRefWaiting         bool              `json:"review_ref_waiting,omitempty"`
 	BlockedReminder          time.Time         `json:"blocked_reminder,omitempty"`
 	SystemCreated            bool              `json:"system_created,omitempty"`
 	StallRetries             int               `json:"stall_retries,omitempty"`
