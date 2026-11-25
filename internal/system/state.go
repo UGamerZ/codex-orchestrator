@@ -1,6 +1,7 @@
 package system
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 type Job struct {
 	AddedAt                  time.Time         `json:"added_at,omitempty"`
+	UpdatedAt                time.Time         `json:"updated_at,omitempty"`
 	RateLimited              bool              `json:"rate_limited,omitempty"`
 	MergedCopiesCleanedAt    time.Time         `json:"merged_copies_cleaned_at,omitempty"`
 	CompletedCopiesCleanedAt time.Time         `json:"completed_copies_cleaned_at,omitempty"`
@@ -73,6 +75,7 @@ type Clarification struct {
 	At       time.Time `json:"at"`
 }
 type State struct {
+	jobSnapshots           map[string][32]byte
 	LastGitHubFeedbackPoll time.Time                  `json:"last_github_feedback_poll,omitempty"`
 	Paused                 bool                       `json:"paused"`
 	Events                 []PanelEvent               `json:"events,omitempty"`
@@ -104,6 +107,26 @@ func LoadState(dir string) (*State, error) {
 	if s.Jobs == nil {
 		return nil, fmt.Errorf("invalid saved jobs")
 	}
+	s.jobSnapshots = map[string][32]byte{}
+	for id, j := range s.Jobs {
+		if j.UpdatedAt.IsZero() {
+			j.UpdatedAt = j.AddedAt
+			if j.RunStartedAt.After(j.UpdatedAt) {
+				j.UpdatedAt = j.RunStartedAt
+			}
+			for _, reply := range j.Clarifications {
+				if reply.At.After(j.UpdatedAt) {
+					j.UpdatedAt = reply.At
+				}
+			}
+			for _, event := range s.Events {
+				if event.Task == id && event.Kind != "cleanup" && event.Kind != "notification-error" && event.At.After(j.UpdatedAt) {
+					j.UpdatedAt = event.At
+				}
+			}
+		}
+		s.jobSnapshots[id] = taskSnapshot(j)
+	}
 	// Never rerun a potentially live container after a controller crash. Ask the owner.
 	for _, j := range s.Jobs {
 		if j.BoardCompleted {
@@ -119,6 +142,21 @@ func LoadState(dir string) (*State, error) {
 	return s, nil
 }
 func (s *State) Save(dir string) error {
+	if s.jobSnapshots == nil {
+		s.jobSnapshots = map[string][32]byte{}
+	}
+	for id, j := range s.Jobs {
+		snapshot := taskSnapshot(j)
+		if previous, exists := s.jobSnapshots[id]; !exists || previous != snapshot {
+			j.UpdatedAt = time.Now().UTC()
+			s.jobSnapshots[id] = snapshot
+		}
+	}
+	for id := range s.jobSnapshots {
+		if s.Jobs[id] == nil {
+			delete(s.jobSnapshots, id)
+		}
+	}
 	b, e := json.MarshalIndent(s, "", "  ")
 	if e != nil {
 		return e
@@ -128,4 +166,17 @@ func (s *State) Save(dir string) error {
 		return e
 	}
 	return os.Rename(p+".tmp", p)
+}
+
+func taskSnapshot(j *Job) [32]byte {
+	copy := *j
+	copy.UpdatedAt = time.Time{}
+	// Polling bookkeeping and local copy cleanup are not changes to task work.
+	copy.GitHubFeedbackSeen = nil
+	copy.BlockedReminder = time.Time{}
+	copy.QuestionReminders = nil
+	copy.CompletedCopiesCleanedAt = time.Time{}
+	copy.MergedCopiesCleanedAt = time.Time{}
+	b, _ := json.Marshal(copy)
+	return sha256.Sum256(b)
 }
