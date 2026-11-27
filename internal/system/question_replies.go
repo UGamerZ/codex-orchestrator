@@ -14,6 +14,9 @@ func blockedReminderText(j *Job, footer string) string {
 }
 
 func (c *Controller) sendBlockedReminder(ctx context.Context, j *Job) error {
+	if !blockedRemindersEnabled(c.C) {
+		return nil
+	}
 	id, err := c.API.Send(ctx, blockedReminderText(j, reminderFooter))
 	if err != nil {
 		return err

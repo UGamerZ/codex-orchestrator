@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	BlockedReminders  *bool    `json:"blocked_reminders_enabled,omitempty"`
 	TestWritePaths    []string `json:"test_write_paths,omitempty"`
 	ReviewTimeout     int      `json:"review_timeout_minutes"`
 	AutoContinueTasks bool     `json:"auto_continue_task_branches"`

@@ -68,6 +68,11 @@ func (c *Controller) handlePanelCommand(cmd PanelCommand) {
 }
 func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	switch cmd.Action {
+	case "blocked-reminders":
+		if cmd.Text != "true" && cmd.Text != "false" {
+			return fmt.Errorf("blocked reminders setting must be true or false")
+		}
+		return c.setBlockedReminders(cmd.Text == "true")
 	case "delete-task":
 		return c.deleteCompletedTask(cmd.ID)
 	case "environment-delete":
@@ -185,7 +190,7 @@ func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	return nil
 }
 
-var panelFields = map[string]bool{"test_write_paths": true, "worker_model": true, "worker_effort": true, "fallback_model": true, "fallback_effort": true, "manager_model": true, "reviewer_model": true, "reviewer_effort": true, "other_effort": true, "max_workers": true, "max_fix_rounds": true, "run_timeout_minutes": true, "review_timeout_minutes": true, "manager_interval_seconds": true, "auto_continue_task_branches": true}
+var panelFields = map[string]bool{"blocked_reminders_enabled": true, "test_write_paths": true, "worker_model": true, "worker_effort": true, "fallback_model": true, "fallback_effort": true, "manager_model": true, "reviewer_model": true, "reviewer_effort": true, "other_effort": true, "max_workers": true, "max_fix_rounds": true, "run_timeout_minutes": true, "review_timeout_minutes": true, "manager_interval_seconds": true, "auto_continue_task_branches": true}
 
 func (c *Controller) validatedPanelConfig(patch map[string]json.RawMessage) (Config, error) {
 	b, _ := json.Marshal(c.C)

@@ -149,7 +149,7 @@ func (c *Controller) poll(ctx context.Context) error {
 		if j.Stage == "waiting" && j.QuestionMessage != 0 && j.BlockedReminder.IsZero() {
 			j.BlockedReminder = time.Now().UTC()
 		}
-		if j.Stage == "waiting" && j.QuestionMessage != 0 && time.Since(j.BlockedReminder) >= time.Hour {
+		if blockedRemindersEnabled(c.C) && j.Stage == "waiting" && j.QuestionMessage != 0 && time.Since(j.BlockedReminder) >= time.Hour {
 			if err := c.sendBlockedReminder(ctx, j); err != nil {
 				log.Printf("blocked reminder delivery: %v", err)
 			}

@@ -125,6 +125,9 @@ func panelHandler(configPath, stateDir, token string, commands chan PanelCommand
 				json.Unmarshal(data, &cfg)
 				safe["review_timeout_minutes"] = json.RawMessage(fmt.Sprint(int(agentRunTimeout(cfg, "reviewer") / time.Minute)))
 			}
+			if _, exists := safe["blocked_reminders_enabled"]; !exists {
+				safe["blocked_reminders_enabled"] = json.RawMessage("true")
+			}
 			json.NewEncoder(w).Encode(safe)
 		case r.URL.Path == "/api/command" && r.Method == "POST":
 			var command PanelCommand
