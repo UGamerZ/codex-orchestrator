@@ -68,6 +68,8 @@ func (c *Controller) handlePanelCommand(cmd PanelCommand) {
 }
 func (c *Controller) executePanelCommand(cmd PanelCommand) error {
 	switch cmd.Action {
+	case "restart-task":
+		return c.restartCompletedTask(cmd.ID)
 	case "blocked-reminders":
 		if cmd.Text != "true" && cmd.Text != "false" {
 			return fmt.Errorf("blocked reminders setting must be true or false")

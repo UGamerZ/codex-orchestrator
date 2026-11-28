@@ -21,6 +21,8 @@ import (
 )
 
 type Request struct {
+	ReviewedSHA        string
+	ReviewCheckpoint   bool
 	TestWritePaths     []string
 	AdoptTaskHead      bool
 	AllowWorkflowEdits bool
@@ -77,7 +79,7 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 			return e
 		}
 	}
-	if r.Operation != "prepare" && r.Operation != "publish" && r.Operation != "review" && r.Operation != "context" {
+	if r.Operation != "prepare" && r.Operation != "publish" && r.Operation != "checkpoint" && r.Operation != "review" && r.Operation != "context" {
 		return fmt.Errorf("operation forbidden")
 	}
 	if r.Branch == r.Base || r.PR < 0 {
@@ -129,6 +131,13 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	}
 	dir := filepath.Join(p.Publish, "repo")
 	fetchHead := func() error {
+		if r.ReviewCheckpoint {
+			if _, err := readCheckpoint(p.Publish, r.SHA, r.Branch); err != nil {
+				return err
+			}
+			_, err := git(dir, "cat-file", "-e", r.SHA+"^{commit}")
+			return err
+		}
 		if r.Local {
 			_, e := git(dir, "cat-file", "-e", r.SHA+"^{commit}")
 			return e
@@ -287,7 +296,7 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		}
 		return json.NewEncoder(output).Encode(Result{SHA: sha})
 	}
-	if r.Operation != "publish" {
+	if r.Operation != "publish" && r.Operation != "checkpoint" {
 		return fmt.Errorf("operation forbidden")
 	}
 	if r.SHA == "" {
@@ -299,9 +308,19 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		}
 	}
 	prior, _ := os.ReadFile(filepath.Join(p.Publish, "last-head"))
+	if r.ReviewedSHA != "" {
+		checkpoint, err := readCheckpoint(p.Publish, r.ReviewedSHA, r.Branch)
+		if err != nil {
+			return err
+		}
+		priorSHA := strings.TrimSpace(string(prior))
+		if checkpoint.ExpectedHead != r.ExpectedHead || checkpoint.Baseline != r.SHA || (priorSHA != r.ExpectedHead && priorSHA != r.ReviewedSHA) {
+			return fmt.Errorf("reviewed checkpoint publication context changed")
+		}
+	}
 	if r.Local {
 		prior, _ = git(dir, "rev-parse", "--verify", "refs/remotes/origin/"+r.Branch)
-		if strings.TrimSpace(string(prior)) != r.ExpectedHead {
+		if strings.TrimSpace(string(prior)) != r.ExpectedHead && (r.ReviewedSHA == "" || strings.TrimSpace(string(prior)) != r.ReviewedSHA) {
 			return fmt.Errorf("local branch changed outside system")
 		}
 	}
@@ -365,7 +384,12 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 	if e != nil {
 		return e
 	}
-	if len(b) == 0 {
+	if len(b) == 0 && r.ReviewedSHA == "" {
+		if r.Operation == "checkpoint" {
+			if err := writeCheckpoint(p.Publish, checkpointReceipt{SHA: parent, Branch: r.Branch, ExpectedHead: r.ExpectedHead, Baseline: r.SHA}); err != nil {
+				return err
+			}
+		}
 		return json.NewEncoder(output).Encode(Result{SHA: parent, Changed: false})
 	}
 	// Reject destructive SQL before committing, pushing, or exporting a local bundle.
@@ -383,8 +407,33 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 			return fmt.Errorf("workflow edit needs explicit human permission")
 		}
 	}
-	if _, e = git(dir, "-c", "user.name=Codex Executor", "-c", "user.email=codex-executor@users.noreply.github.com", "commit", "-m", r.Message); e != nil {
-		return e
+	if r.ReviewedSHA != "" {
+		currentTree, err := git(dir, "write-tree")
+		if err != nil {
+			return err
+		}
+		reviewedTree, err := git(dir, "rev-parse", r.ReviewedSHA+"^{tree}")
+		if err != nil || strings.TrimSpace(string(currentTree)) != strings.TrimSpace(string(reviewedTree)) {
+			return fmt.Errorf("workspace changed after internal review; a new checkpoint and review are required")
+		}
+		if _, e = git(dir, "reset", "--hard", r.ReviewedSHA); e != nil {
+			return e
+		}
+	} else {
+		if _, e = git(dir, "-c", "user.name=Codex Executor", "-c", "user.email=codex-executor@users.noreply.github.com", "commit", "-m", r.Message); e != nil {
+			return e
+		}
+	}
+	if r.Operation == "checkpoint" {
+		head, err := git(dir, "rev-parse", "HEAD")
+		if err != nil {
+			return err
+		}
+		sha := strings.TrimSpace(string(head))
+		if err := writeCheckpoint(p.Publish, checkpointReceipt{SHA: sha, Branch: r.Branch, ExpectedHead: r.ExpectedHead, Baseline: r.SHA}); err != nil {
+			return err
+		}
+		return json.NewEncoder(output).Encode(Result{SHA: sha, Changed: true})
 	}
 	// Only this exact task branch can be written. A fast-forward push preserves human updates.
 	var remote []byte
@@ -405,7 +454,7 @@ func execute(parentContext context.Context, r Request, p Paths, output io.Writer
 		old = fields[0]
 	}
 	// Expected publication head is stored only in the trusted publisher volume.
-	if old != "" && old != strings.TrimSpace(string(prior)) {
+	if old != "" && old != strings.TrimSpace(string(prior)) && (r.ReviewedSHA == "" || old != r.ReviewedSHA) {
 		return fmt.Errorf("branch changed outside system; human confirmation required")
 	}
 	if !r.Local {

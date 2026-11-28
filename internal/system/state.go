@@ -45,6 +45,9 @@ type Job struct {
 	Branch                   string            `json:"branch"`
 	BaseSHA                  string            `json:"base_sha"`
 	Head                     string            `json:"head"`
+	DraftSHA                 string            `json:"draft_sha,omitempty"`
+	ApprovedDraftSHA         string            `json:"approved_draft_sha,omitempty"`
+	DraftReviewSummary       string            `json:"draft_review_summary,omitempty"`
 	PR                       int               `json:"pr"`
 	PRURL                    string            `json:"pr_url"`
 	External                 bool              `json:"external"`

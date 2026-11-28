@@ -52,14 +52,15 @@ Use an existing GitHub repository, start a new project, or work entirely with lo
 flowchart LR
     Todo["Trello: To Do"] --> Manager["Manager"]
     Manager --> Executor["Executor: task branch"]
-    Executor --> Changes["Pull request or local branch"]
+    Executor --> Changes["Local checkpoint"]
     Changes --> Review{"Internal review"}
     Review -->|Findings| Executor
-    Review -->|Current commit passes| Done["Trello: Done"]
+    Review -->|Current commit passes| Publish["Publish PR or local branch"]
+    Publish --> Done["Trello: Done"]
     Done --> Telegram["Telegram notification"]
 ```
 
-The controller moves selected cards to **In Progress** while the executors work. Creating a PR does not complete the task: **Done requires an internal review with no findings on the current commit**.
+The controller moves selected cards to **In Progress** while the executors work. Executor changes and review corrections stay local. **A PR is created or updated only after the internal reviewer passes the exact commit**, then the task moves to Done. Each successful cycle publishes one checked revision; intermediate fixes and failed reviews are not posted to GitHub.
 
 Findings return to the original executor's session and branch. Automatic fixes run for three rounds by default; continuing beyond the limit requires a human reply. Questions about genuine ambiguities or missing resources are sent immediately, while routine implementation choices remain autonomous.
 

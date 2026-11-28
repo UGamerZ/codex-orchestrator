@@ -27,7 +27,7 @@ func TestSQLRejectionReturnsToExecutorWithoutRepublishing(t *testing.T) {
 			if err := c.finish(context.Background(), RunResult{ID: j.ID, Role: "executor", Verdict: Verdict{Status: "completed", CommitTitle: "Correct test database stub"}}); err != nil {
 				t.Fatal(err)
 			}
-			if j.DataGuardRetries != attempt || j.Stage != "publish" {
+			if j.DataGuardRetries != attempt || j.Stage != "checkpoint" {
 				t.Fatal("guard correction budget reset before a safe publication")
 			}
 		} else if j.Stage != "waiting" {

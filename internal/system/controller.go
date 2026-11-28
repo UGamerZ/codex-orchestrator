@@ -229,7 +229,11 @@ func (c *Controller) poll(ctx context.Context) error {
 		for _, card := range cards {
 			if !card.Closed && card.List == c.C.Todo {
 				id := card.ID
-				if _, known := c.State.Jobs[id]; !known {
+				known := c.State.Jobs[id] != nil
+				for _, existing := range c.State.Jobs {
+					known = known || existing.Card == id
+				}
+				if !known {
 					var lists []TaskChecklist
 					if c.C.Board != "" {
 						lists, e = c.API.Checklists(ctx, id)
@@ -420,6 +424,9 @@ func (c *Controller) discoverPRs(ctx context.Context) error {
 		if skip {
 			continue
 		}
+		if j.DraftSHA != "" {
+			continue // Local review must not adopt stale or outside PR metadata.
+		}
 		if c.C.AutoContinueTasks && systemCreatedTask(j) && p.Head.Repo.FullName == c.C.Repository && p.Head.Ref == j.Branch && (j.External || j.Head != p.Head.SHA) && j.Stage != "running" && j.Stage != "publishing" && j.Stage != "publish" && j.Stage != "queued" {
 			head, e := c.API.BranchHead(ctx, p)
 			if e != nil {
@@ -517,7 +524,11 @@ func (c *Controller) schedule() error {
 				role = "reviewer"
 				reviewer = true
 			}
-		case "publish":
+		case "checkpoint", "publish":
+			operation := "checkpoint"
+			if j.Stage == "publish" && approvedDraftPublication(j) == nil {
+				operation = "publish"
+			}
 			j.Stage = "publishing"
 			j.RunStartedAt = time.Now().UTC()
 			j.Role = "publisher"
@@ -529,8 +540,8 @@ func (c *Controller) schedule() error {
 			go func() {
 				ctx, cancel := context.WithTimeout(runContext, 12*time.Minute)
 				defer cancel()
-				p, e := c.Runner.Broker(ctx, &copy, "publish")
-				c.Results <- RunResult{ID: copy.ID, Role: "publisher", Publication: p, Err: e}
+				p, e := c.Runner.Broker(ctx, &copy, operation)
+				c.Results <- RunResult{ID: copy.ID, Role: "publisher", Checkpoint: operation == "checkpoint", Publication: p, Err: e}
 			}()
 			continue
 		}
@@ -585,7 +596,7 @@ func (c *Controller) prompt(j Job, role string) string {
 	if role == "reviewer" {
 		return common + "You are the reviewer. The working copy is read-only. Review changes against the base branch " + c.C.BaseBranch + " for correctness, security, task requirements, and regressions. Use /review-input/diff.patch and /review-input/description.txt supplied by the trusted service. Do not modify files or attempt to approve or merge a PR. If no material task-related blockers remain, return status=passed and findings=[]. Otherwise return status=changes with only those blockers, their paths and brief evidence. Use the acceptance standard above. Keep review focused and proportional to the task. Only material in-scope blockers belong in findings; optional suggestions belong in summary and must not trigger fixes. Do not claim checks you did not run. Ask only when essential missing information genuinely prevents review.\nTask: " + j.Title + "\n" + j.Description + "\nAnswer: " + j.Answer
 	}
-	return common + "You are the executor. Complete the task in /workspace. Follow the project's AGENTS.md. Permission to commit applies only to the separate new branch " + j.Branch + "; the trusted Git service publishes the commit and creates a PR or local review. Do not change the base branch " + c.C.BaseBranch + ". Do not request or use a GitHub token. Use focused validation proportional to this change. When finished, return status=completed, a summary of changes and validation, and commit_title: a short, meaningful English Git commit subject of 3-5 words (never more than 5 words or 60 characters) describing the specific changes made in THIS run. Examples: Restore disabled debug logging; Guard recursive logging fallback. Put explanations and validation in summary, never in the title. Use an action verb and meaningful details; do not copy the task/card title or use a generic title such as Fix review findings. After review, name the concrete correction you made, not the original overall task. The trusted publisher uses this exact subject for the commit. Address material, supported, in-scope review findings in the same branch. Do not change .github/workflows without a separate human decision. If needed, ask a question beginning exactly: May I add or modify a file in .github/workflows, followed by the purpose. An explicit yes or да reply grants workflow changes only for this task; the trusted publisher independently checks the saved reply.\nTask: " + j.Title + "\n" + j.Description + "\nReviewer findings: " + strings.Join(j.Findings, "\n") + "\nAnswer to the question: " + j.Answer
+	return common + "You are the executor. Complete the task in /workspace. Follow the project's AGENTS.md. Permission to commit applies only to the separate new branch " + j.Branch + "; the trusted Git service publishes the commit and creates a PR or local review. Do not change the base branch " + c.C.BaseBranch + ". Do not request or use a GitHub token. Use focused validation proportional to this change. When finished, return status=completed, a summary of changes and validation, and commit_title: a short, meaningful English Git commit subject of 3-5 words (never more than 5 words or 60 characters) describing the complete pending change set that will be published after review. Examples: Restore disabled debug logging; Guard recursive logging fallback. Put explanations and validation in summary, never in the title. Use an action verb and meaningful details; do not copy the task/card title or use a generic title such as Fix review findings. Review corrections stay local; keep the title meaningful for the complete unpublished change set. Summarize that complete implementation and current validation for the eventual PR. The trusted publisher uses this exact subject for the commit. Address material, supported, in-scope review findings in the same branch. Do not change .github/workflows without a separate human decision. If needed, ask a question beginning exactly: May I add or modify a file in .github/workflows, followed by the purpose. An explicit yes or да reply grants workflow changes only for this task; the trusted publisher independently checks the saved reply.\nTask: " + j.Title + "\n" + j.Description + "\nReviewer findings: " + strings.Join(j.Findings, "\n") + "\nAnswer to the question: " + j.Answer
 }
 func (c *Controller) wait(j *Job, question string) {
 	j.Stage = "waiting"
@@ -704,6 +715,13 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 			c.wait(j, "The executor finished, but there are no changes for a new review. Clarify the expected result.")
 			return nil
 		}
+		if r.Checkpoint {
+			j.DraftSHA = r.Publication.SHA
+			j.ApprovedDraftSHA = ""
+			j.Role, j.Stage = "reviewer", "review"
+			j.ReviewerSession = ""
+			return nil
+		}
 		j.Head = r.Publication.SHA
 		if j.PR == 0 {
 			n, u, e := c.API.CreatePR(ctx, j)
@@ -717,8 +735,17 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 				return e
 			}
 		}
-		j.Role = "reviewer"
-		j.Stage = "review"
+		if j.DraftSHA != "" && j.DraftSHA == j.ApprovedDraftSHA && j.Head == j.DraftSHA {
+			j.ReviewedHead = j.Head
+			j.Role, j.Stage = "reviewer", "passed"
+			if e := c.API.Comment(ctx, j.PR, "Automated review of commit "+j.Head+".\n\n"+j.DraftReviewSummary+"\n\nGitHub approval and merging remain human-only."); e != nil {
+				c.panelEvent("notification-error", j.ID, "Reviewed changes published; GitHub review summary could not be posted")
+			}
+			j.DraftSHA, j.ApprovedDraftSHA, j.DraftReviewSummary = "", "", ""
+		} else {
+			j.Role = "reviewer"
+			j.Stage = "review"
+		}
 		j.ReviewerSession = ""
 		return nil
 	}
@@ -763,11 +790,29 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 	if r.Role == "executor" {
 		j.CommitTitle = strings.TrimSpace(v.CommitTitle)
 		j.Summary = v.Summary
-		j.Stage = "publish"
+		j.DraftSHA, j.ApprovedDraftSHA, j.DraftReviewSummary = "", "", ""
+		j.Stage = "checkpoint"
 		j.Role = "publisher"
 		return nil
 	}
 	if r.Role == "reviewer" {
+		if j.DraftSHA != "" {
+			if j.External {
+				j.Findings = v.Findings
+				c.externalReviewBlocker(j)
+				return nil
+			}
+			if v.Status == "passed" {
+				j.ApprovedDraftSHA, j.DraftReviewSummary = j.DraftSHA, v.Summary
+				j.Findings = nil
+				j.Role, j.Stage = "publisher", "publish"
+				return nil
+			}
+			j.ApprovedDraftSHA = ""
+			j.Findings = v.Findings
+			c.queueReviewCorrections(j, v.Findings)
+			return nil
+		}
 		// A verdict applies only to the exact reviewed commit, including external PRs.
 		pulls, e := c.API.Pulls(ctx)
 		if e != nil {
@@ -790,9 +835,11 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 		} else {
 			body += "\n\n" + strings.Join(v.Findings, "\n")
 		}
-		if e = c.API.Comment(ctx, j.PR, body); e != nil {
-			c.wait(j, e.Error())
-			return nil
+		if v.Status == "passed" {
+			if e = c.API.Comment(ctx, j.PR, body); e != nil {
+				c.wait(j, e.Error())
+				return nil
+			}
 		}
 		j.ReviewedHead = j.Head
 		j.ReviewPolicyVersion = documentationReviewPolicyVersion
@@ -805,14 +852,7 @@ func (c *Controller) finish(ctx context.Context, r RunResult) error {
 			c.externalReviewBlocker(j)
 			return nil
 		}
-		j.Fixes++
-		if !j.FixLimitDisabled && j.Fixes > c.C.MaxFixes {
-			j.Role = "executor"
-			c.wait(j, "The automatic fix limit has been reached. Findings: "+strings.Join(v.Findings, "\n")+". Clarify the next step; your reply resets the fix counter and authorizes a new full cycle of automatic fixes.")
-			return nil
-		}
-		j.Stage = "queued"
-		j.Role = "executor"
+		c.queueReviewCorrections(j, v.Findings)
 		return nil
 	}
 	return fmt.Errorf("unknown role")

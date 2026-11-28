@@ -60,12 +60,18 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 		return broker.Result{}, fmt.Errorf("GitHub credential unavailable")
 	}
 	if operation == "publish" {
+		if err := approvedDraftPublication(j); err != nil {
+			return broker.Result{}, err
+		}
 		if err := r.verifyPublicationCard(ctx, j); err != nil {
 			return broker.Result{}, err
 		}
 	}
 	req := broker.Request{Operation: operation, Repository: r.C.Repository, Base: r.C.BaseBranch, SHA: j.BaseSHA, Branch: j.Branch, Token: strings.TrimSpace(string(token)), Message: publicationTitle(j)}
 	req.ExpectedHead = j.Head
+	if operation == "publish" {
+		req.ReviewedSHA = j.DraftSHA
+	}
 	req.AdoptTaskHead = operation == "prepare" && r.C.AutoContinueTasks && systemCreatedTask(j) && !j.External && j.Head != ""
 	if req.AdoptTaskHead {
 		req.SHA = j.Head
@@ -85,6 +91,9 @@ func (r *Runner) nativeBroker(ctx context.Context, j *Job, operation string) (br
 	if operation == "review" {
 		req.TestWritePaths = r.C.TestWritePaths
 		req.SHA = j.Head
+		if j.DraftSHA != "" {
+			req.SHA, req.ReviewCheckpoint = j.DraftSHA, true
+		}
 		req.PR = j.PR
 		req.Message = j.Title + "\n" + taskDescription(j)
 	}
