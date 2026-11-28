@@ -219,6 +219,8 @@ Interrupted or timed-out agent runs can retry up to three times, five minutes ap
 
 Every task is an isolated scope of work. Agents implement only its explicit requirements and correct regressions introduced by its changes. Pre-existing bugs, unrelated test failures, refactoring, optimization and changes to existing business rules require a separate human-authorized task. Review findings cannot expand the task or authorize unrelated fixes.
 
+Reviews use a practical acceptance threshold: substantive unmet requirements, demonstrated regressions, and introduced security or data-loss risks can block. Minor suggestions and unrelated legacy failures do not trigger automatic fixes. Follow-up reviews focus on the corrections and their direct effects. Executors make the smallest sufficient changes and use proportionate validation; obsolete finding lists are not repeatedly injected into new prompts, while human answers and safety restrictions are retained.
+
 ## Isolation and permissions
 
 The trusted controller manages integrations and publication. Executors work on task branches; reviewers and managers receive read-only working copies.

@@ -38,6 +38,20 @@ func TestClarificationHistorySurvivesMultipleReplies(t *testing.T) {
 		t.Fatal("clarifications not persisted")
 	}
 }
+func TestPromptKeepsHumanDecisionsWithoutReinjectingOldFindings(t *testing.T) {
+	j := Job{Findings: []string{"Current material regression"}, Clarifications: []Clarification{
+		{Origin: "system", Question: "The automatic fix limit has been reached. Findings: Obsolete fixed bug", Answer: "Continue; keep the existing API"},
+		{Origin: "agent", Question: "May I add or modify a file in .github/workflows for this task?", Answer: "Yes, for this task only"},
+	}}
+	text := clarificationContext(j)
+	if strings.Contains(text, "Obsolete fixed bug") || !strings.Contains(text, "keep the existing API") || !strings.Contains(text, ".github/workflows") || !strings.Contains(text, "Yes, for this task only") {
+		t.Fatal("prompt lost a human decision or reinjected obsolete findings")
+	}
+	if !strings.Contains(j.Clarifications[0].Question, "Obsolete fixed bug") || j.Findings[0] != "Current material regression" {
+		t.Fatal("prompt compaction modified saved history or current findings")
+	}
+}
+
 func TestAnsweredQuestionIsNotImmediatelySentAgain(t *testing.T) {
 	c := fixture(t)
 	j := &Job{ID: "task", Role: "executor", Stage: "running", ExecutorSession: "same", Clarifications: []Clarification{{Role: "executor", Origin: "agent", Question: "Which mode?", Answer: "Existing mode"}}}
